@@ -36,6 +36,7 @@ pub struct UserStake {
     pub locker_id: u64,
     pub lp_token: Addr,
     pub lp_amount: Uint128,
+    pub locked_at: u64,
     pub bonus_multiplier: Decimal,
 }
 
