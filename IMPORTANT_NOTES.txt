@@ -1,0 +1,159 @@
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║         LP PLATFORM v2.0 - IMPORTANT INFORMATION                 ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+
+🔒 WHAT THIS LOCKS: LP TOKENS (NOT REGULAR PRC20 TOKENS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This platform is designed to lock LIQUIDITY POOL (LP) TOKENS.
+
+LP Token Example:
+  - PAXI-USDT LP Token (represents your DEX liquidity position)
+  - PAXI-ETH LP Token
+  - Any CW20 LP token from Paxi DEX
+
+NOT for:
+  ❌ Regular PRC20 tokens (PAXI, USDT, etc.)
+  ❌ Single asset tokens
+  ❌ NFTs
+
+LP tokens MUST be whitelisted by admin before they can be locked.
+
+📋 DEPLOYMENT CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Before deploying to mainnet:
+
+✅ Build contracts:          ./build_all.sh
+✅ Test on testnet:          Minimum 2 weeks
+✅ Verify all LP tokens:     Only whitelist audited LP tokens
+✅ Configure emergency:      Default 3 days delay (259200 seconds)
+✅ Set reward pools:         Calculate emission rates carefully
+✅ Backup admin keys:        Secure admin wallet private key
+✅ Document addresses:       Save all contract addresses
+
+🔐 SECURITY FEATURES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Time-lock enforcement (cannot unlock early)
+✅ Emergency unlock with mandatory delay (3 days default)
+✅ Whitelist-only LP tokens
+✅ Reentrancy protection
+✅ Overflow protection
+✅ Admin controls with safeguards
+✅ Migration support
+✅ Pause mechanism (admin only)
+
+⚠️ IMPORTANT: Unlock always works even if contract is paused!
+
+🛠️ BUILD & DEPLOY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Local Build:
+   chmod +x build_all.sh
+   ./build_all.sh
+
+2. GitHub Actions:
+   - Push to main branch → Auto build & test
+   - Create tag v2.0.0 → Auto build & release
+
+3. Manual Deploy:
+   See docs/DEPLOYMENT.md for step-by-step guide
+
+📂 PROJECT STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+lp-platform-v2/
+├── contracts/
+│   ├── lp-locker/              ← LP token locking
+│   │   ├── src/
+│   │   │   ├── contract.rs     ← Main logic
+│   │   │   ├── state.rs        ← Data structures
+│   │   │   ├── msg.rs          ← Messages
+│   │   │   ├── error.rs        ← Error types
+│   │   │   └── lib.rs
+│   │   └── Cargo.toml
+│   │
+│   └── reward-controller/      ← Reward distribution
+│       ├── src/
+│       │   ├── contract.rs     ← Main logic
+│       │   ├── state.rs        ← Data structures
+│       │   ├── msg.rs          ← Messages
+│       │   ├── error.rs        ← Error types
+│       │   └── lib.rs
+│       └── Cargo.toml
+│
+├── .github/workflows/
+│   └── build.yml               ← CI/CD pipeline
+│
+├── build_all.sh                ← Build script
+├── README.md                   ← Full documentation
+├── QUICK_START.md              ← Quick guide
+├── LICENSE                     ← MIT License
+│
+└── docs/
+    ├── DEPLOYMENT.md           ← Deployment guide
+    └── API.md                  ← API reference
+
+🎯 USER FLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. User sends LP tokens to locker → LP locked
+2. User registers stake in reward controller → Earns rewards
+3. User claims rewards periodically → Gets reward tokens
+4. After unlock_time → User unlocks LP tokens
+
+💡 BONUS FEATURES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ Lock duration bonus multiplier:
+   - 0-30 days:      1.0x APR
+   - 31-90 days:     1.2x APR
+   - 91-180 days:    1.5x APR
+   - 181-365 days:   2.0x APR
+   - 365+ days:      2.5x APR
+
+✨ Lock extension support (extend unlock time)
+✨ Multi-token rewards (CW20 + native)
+✨ Platform fee option (recycled to rewards)
+
+🔧 CONFIGURATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LP Locker Default Settings:
+  - emergency_unlock_delay: 259200 seconds (3 days)
+  - platform_fee_bps: 0 (can be updated)
+  - paused: false
+
+Reward Controller Default Settings:
+  - claim_interval: 3600 seconds (1 hour)
+  - paused: false
+
+All settings can be updated by admin after deployment.
+
+📞 SUPPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 Documentation:    README.md, docs/
+🐛 Issues:           GitHub Issues
+💬 Community:        Paxi Network Discord
+
+🎉 READY TO DEPLOY?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Read QUICK_START.md
+2. Run ./build_all.sh
+3. Follow docs/DEPLOYMENT.md
+4. Test on testnet (minimum 2 weeks!)
+5. Deploy to mainnet
+6. Whitelist LP tokens
+7. Create reward pools
+8. Launch! 🚀
+
+════════════════════════════════════════════════════════════════
+
+        Built with ❤️ for Paxi Network DeFi Ecosystem
+
+════════════════════════════════════════════════════════════════
