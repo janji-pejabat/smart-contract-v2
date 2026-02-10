@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate, query};
-    use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, LockerHookMsg, PendingRewardsResponse, UserStakeResponse};
+    use crate::msg::{
+        ExecuteMsg, InstantiateMsg, LockerHookMsg, PendingRewardsResponse, QueryMsg,
+        UserStakeResponse,
+    };
     use crate::state::AssetInfo;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{Decimal, Uint128};
@@ -121,13 +124,26 @@ mod tests {
             locker_id: 1,
             owner: "user".to_string(),
         });
-        let res = execute(deps.as_mut(), env.clone(), mock_info("locker", &[]), unlock_hook).unwrap();
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("locker", &[]),
+            unlock_hook,
+        )
+        .unwrap();
 
         assert_eq!(res.attributes[0].value, "locker_hook");
         assert_eq!(res.attributes[1].value, "on_unlock_auto_claim");
 
         // Verify user stake is removed
-        let res = query(deps.as_ref(), env.clone(), QueryMsg::UserStake { user: "user".to_string(), locker_id: 1 });
+        let res = query(
+            deps.as_ref(),
+            env.clone(),
+            QueryMsg::UserStake {
+                user: "user".to_string(),
+                locker_id: 1,
+            },
+        );
         assert!(res.is_err());
     }
 
@@ -137,17 +153,29 @@ mod tests {
         let mut env = mock_env();
         let admin_info = mock_info("admin", &[]);
 
-        instantiate(deps.as_mut(), env.clone(), admin_info.clone(), InstantiateMsg {
-            admin: "admin".to_string(),
-            lp_locker_contract: "locker".to_string(),
-            claim_interval: Some(0),
-        }).unwrap();
+        instantiate(
+            deps.as_mut(),
+            env.clone(),
+            admin_info.clone(),
+            InstantiateMsg {
+                admin: "admin".to_string(),
+                lp_locker_contract: "locker".to_string(),
+                claim_interval: Some(0),
+            },
+        )
+        .unwrap();
 
-        execute(deps.as_mut(), env.clone(), admin_info.clone(), ExecuteMsg::CreateRewardPool {
-            lp_token: "lp_token".to_string(),
-            reward_token: AssetInfo::Native("paxi".to_string()),
-            apr: Decimal::percent(10),
-        }).unwrap();
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            admin_info.clone(),
+            ExecuteMsg::CreateRewardPool {
+                lp_token: "lp_token".to_string(),
+                reward_token: AssetInfo::Native("paxi".to_string()),
+                apr: Decimal::percent(10),
+            },
+        )
+        .unwrap();
 
         // Lock for 40 days (1.2x multiplier)
         let locked_at = env.block.time.seconds();
@@ -160,11 +188,26 @@ mod tests {
             locked_at,
             unlock_time,
         });
-        execute(deps.as_mut(), env.clone(), mock_info("locker", &[]), lock_hook).unwrap();
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("locker", &[]),
+            lock_hook,
+        )
+        .unwrap();
 
         let stake: UserStakeResponse = cosmwasm_std::from_json(
-            &query(deps.as_ref(), env.clone(), QueryMsg::UserStake { user: "user".to_string(), locker_id: 1 }).unwrap()
-        ).unwrap();
+            &query(
+                deps.as_ref(),
+                env.clone(),
+                QueryMsg::UserStake {
+                    user: "user".to_string(),
+                    locker_id: 1,
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
         assert_eq!(stake.bonus_multiplier, Decimal::from_ratio(12u128, 10u128));
 
         // Advance time by 35 days (only 5 days remaining)
@@ -176,11 +219,26 @@ mod tests {
             locker_id: 1,
             new_unlock_time,
         });
-        execute(deps.as_mut(), env.clone(), mock_info("locker", &[]), extend_hook).unwrap();
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("locker", &[]),
+            extend_hook,
+        )
+        .unwrap();
 
         let stake: UserStakeResponse = cosmwasm_std::from_json(
-            &query(deps.as_ref(), env.clone(), QueryMsg::UserStake { user: "user".to_string(), locker_id: 1 }).unwrap()
-        ).unwrap();
+            &query(
+                deps.as_ref(),
+                env.clone(),
+                QueryMsg::UserStake {
+                    user: "user".to_string(),
+                    locker_id: 1,
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
         // Should be 1.5x (total 100 days), not 1.2x (remaining 65 days) or 1.0x (remaining 5 days before extension)
         assert_eq!(stake.bonus_multiplier, Decimal::from_ratio(15u128, 10u128));
