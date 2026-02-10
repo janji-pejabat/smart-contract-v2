@@ -440,7 +440,12 @@ mod tests {
         .unwrap();
 
         let pool: RewardPoolResponse = cosmwasm_std::from_json(
-            &query(deps.as_ref(), env.clone(), QueryMsg::RewardPool { pool_id: 0 }).unwrap(),
+            &query(
+                deps.as_ref(),
+                env.clone(),
+                QueryMsg::RewardPool { pool_id: 0 },
+            )
+            .unwrap(),
         )
         .unwrap();
         assert_eq!(pool.apr, Decimal::percent(15));
@@ -478,7 +483,12 @@ mod tests {
         .unwrap();
 
         let pool: RewardPoolResponse = cosmwasm_std::from_json(
-            &query(deps.as_ref(), env.clone(), QueryMsg::RewardPool { pool_id: 0 }).unwrap(),
+            &query(
+                deps.as_ref(),
+                env.clone(),
+                QueryMsg::RewardPool { pool_id: 0 },
+            )
+            .unwrap(),
         )
         .unwrap();
         assert_eq!(pool.apr, Decimal::percent(10));
@@ -516,7 +526,12 @@ mod tests {
         .unwrap();
 
         let pool: RewardPoolResponse = cosmwasm_std::from_json(
-            &query(deps.as_ref(), env.clone(), QueryMsg::RewardPool { pool_id: 0 }).unwrap(),
+            &query(
+                deps.as_ref(),
+                env.clone(),
+                QueryMsg::RewardPool { pool_id: 0 },
+            )
+            .unwrap(),
         )
         .unwrap();
         assert_eq!(pool.apr, Decimal::percent(5));

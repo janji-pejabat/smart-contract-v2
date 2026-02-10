@@ -11,8 +11,8 @@ use crate::msg::{
     LockersResponse, MigrateMsg, QueryMsg, TotalLockedResponse, WhitelistedLPResponse,
 };
 use crate::state::{
-    Config, Locker, WhitelistedLP, CONFIG, LOCKERS, TOTAL_LOCKED, USER_LOCKERS, WHITELISTED_LPS,
-    USER_LP_HISTORY,
+    Config, Locker, WhitelistedLP, CONFIG, LOCKERS, TOTAL_LOCKED, USER_LOCKERS, USER_LP_HISTORY,
+    WHITELISTED_LPS,
 };
 
 const CONTRACT_NAME: &str = "crates.io:lp-locker";
@@ -226,7 +226,10 @@ fn execute_lock_lp(
     })?;
 
     // Update whitelist statistics
-    whitelist.total_locked_all_time = whitelist.total_locked_all_time.checked_add(lock_amount).map_err(cosmwasm_std::StdError::from)?;
+    whitelist.total_locked_all_time = whitelist
+        .total_locked_all_time
+        .checked_add(lock_amount)
+        .map_err(cosmwasm_std::StdError::from)?;
     if !USER_LP_HISTORY.has(deps.storage, (&sender, &lp_token)) {
         USER_LP_HISTORY.save(deps.storage, (&sender, &lp_token), &true)?;
         whitelist.user_count += 1;
@@ -267,7 +270,9 @@ fn execute_batch_unlock(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if locker_ids.len() > config.batch_limit as usize {
-        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err("Batch limit exceeded")));
+        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
+            "Batch limit exceeded",
+        )));
     }
 
     let mut response = Response::new().add_attribute("action", "batch_unlock");
@@ -377,12 +382,20 @@ fn execute_batch_extend_lock(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if locks.len() > config.batch_limit as usize {
-        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err("Batch limit exceeded")));
+        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
+            "Batch limit exceeded",
+        )));
     }
 
     let mut response = Response::new().add_attribute("action", "batch_extend_lock");
     for (locker_id, new_unlock_time) in locks {
-        let res = execute_extend_lock(deps.branch(), env.clone(), info.clone(), locker_id, new_unlock_time)?;
+        let res = execute_extend_lock(
+            deps.branch(),
+            env.clone(),
+            info.clone(),
+            locker_id,
+            new_unlock_time,
+        )?;
         response = response.add_submessages(res.messages);
         response = response.add_attributes(res.attributes);
     }

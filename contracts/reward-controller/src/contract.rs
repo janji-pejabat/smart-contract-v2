@@ -67,7 +67,9 @@ pub fn execute(
             locker_ids,
             pool_ids,
         } => execute_batch_claim_rewards(deps, env, info, locker_ids, pool_ids),
-        ExecuteMsg::RegisterReferral { referrer } => execute_register_referral(deps, info, referrer),
+        ExecuteMsg::RegisterReferral { referrer } => {
+            execute_register_referral(deps, info, referrer)
+        }
         ExecuteMsg::ClaimReferralRewards {} => execute_claim_referral_rewards(deps, env, info),
         ExecuteMsg::CreateRewardPool {
             lp_token,
@@ -879,7 +881,12 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             referrer,
             start_after,
             limit,
-        } => to_json_binary(&query_referrer_balances(deps, referrer, start_after, limit)?),
+        } => to_json_binary(&query_referrer_balances(
+            deps,
+            referrer,
+            start_after,
+            limit,
+        )?),
     }
 }
 
