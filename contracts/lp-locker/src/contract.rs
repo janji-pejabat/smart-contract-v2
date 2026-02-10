@@ -594,6 +594,7 @@ fn execute_update_config(
     Ok(Response::new().add_attribute("action", "update_config"))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_whitelist_lp(
     deps: DepsMut,
     info: MessageInfo,
