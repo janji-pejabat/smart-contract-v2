@@ -3,9 +3,9 @@ mod tests {
     use crate::contract::{execute, instantiate, query};
     use crate::msg::{
         ExecuteMsg, InstantiateMsg, LockerHookMsg, PendingRewardsResponse, QueryMsg,
-        UserStakeResponse,
+        ReferrerBalancesResponse, RewardPoolResponse, UserStakeResponse,
     };
-    use crate::state::AssetInfo;
+    use crate::state::{AssetInfo, DynamicAPRConfig};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{Decimal, Uint128};
 
@@ -37,6 +37,7 @@ mod tests {
                 lp_token: "lp_token".to_string(),
                 reward_token: AssetInfo::Native("paxi".to_string()),
                 apr: Decimal::percent(10),
+                dynamic_config: None,
             },
         )
         .unwrap();
@@ -173,6 +174,7 @@ mod tests {
                 lp_token: "lp_token".to_string(),
                 reward_token: AssetInfo::Native("paxi".to_string()),
                 apr: Decimal::percent(10),
+                dynamic_config: None,
             },
         )
         .unwrap();
@@ -242,5 +244,281 @@ mod tests {
 
         // Should be 1.5x (total 100 days), not 1.2x (remaining 65 days) or 1.0x (remaining 5 days before extension)
         assert_eq!(stake.bonus_multiplier, Decimal::from_ratio(15u128, 10u128));
+    }
+
+    #[test]
+    fn test_referral_system() {
+        let mut deps = mock_dependencies();
+        let mut env = mock_env();
+        let admin_info = mock_info("admin", &[]);
+
+        instantiate(
+            deps.as_mut(),
+            env.clone(),
+            admin_info.clone(),
+            InstantiateMsg {
+                admin: "admin".to_string(),
+                lp_locker_contract: "locker".to_string(),
+                claim_interval: Some(0),
+            },
+        )
+        .unwrap();
+
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            admin_info.clone(),
+            ExecuteMsg::CreateRewardPool {
+                lp_token: "lp_token".to_string(),
+                reward_token: AssetInfo::Native("paxi".to_string()),
+                apr: Decimal::percent(10),
+                dynamic_config: None,
+            },
+        )
+        .unwrap();
+
+        // Admin deposits rewards
+        let deposit_info = mock_info(
+            "admin",
+            &[cosmwasm_std::Coin {
+                denom: "paxi".to_string(),
+                amount: Uint128::new(1000000),
+            }],
+        );
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            deposit_info,
+            ExecuteMsg::DepositRewards { pool_id: 0 },
+        )
+        .unwrap();
+
+        // Register Referral: User B referred by User A
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("userb", &[]),
+            ExecuteMsg::RegisterReferral {
+                referrer: "usera".to_string(),
+            },
+        )
+        .unwrap();
+
+        // Lock for User B
+        let lock_hook = ExecuteMsg::LockerHook(LockerHookMsg::OnLock {
+            locker_id: 1,
+            owner: "userb".to_string(),
+            lp_token: "lp_token".to_string(),
+            amount: Uint128::new(100000), // Larger amount for better precision
+            locked_at: env.block.time.seconds(),
+            unlock_time: env.block.time.seconds() + 365 * 86400,
+        });
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("locker", &[]),
+            lock_hook,
+        )
+        .unwrap();
+
+        // Advance 1 year
+        env.block.time = env.block.time.plus_seconds(365 * 86400);
+
+        // Expected reward for User B: 100,000 * 2.5 * 0.1 = 25,000
+        // Commission for User A (5%): 25,000 * 0.05 = 1,250
+        // Net for User B: 25,000 - 1,250 = 23,750
+
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("userb", &[]),
+            ExecuteMsg::ClaimRewards {
+                locker_id: 1,
+                pool_ids: vec![0],
+            },
+        )
+        .unwrap();
+
+        // Check User A balance
+        let res: ReferrerBalancesResponse = cosmwasm_std::from_json(
+            &query(
+                deps.as_ref(),
+                env.clone(),
+                QueryMsg::ReferrerBalances {
+                    referrer: "usera".to_string(),
+                    start_after: None,
+                    limit: None,
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(res.balances[0].amount.u128(), 1250);
+
+        // User A claims referral rewards
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("usera", &[]),
+            ExecuteMsg::ClaimReferralRewards {},
+        )
+        .unwrap();
+        assert_eq!(res.attributes[0].value, "claim_referral_rewards");
+    }
+
+    #[test]
+    fn test_dynamic_apr() {
+        let mut deps = mock_dependencies();
+        let mut env = mock_env();
+        let admin_info = mock_info("admin", &[]);
+
+        instantiate(
+            deps.as_mut(),
+            env.clone(),
+            admin_info.clone(),
+            InstantiateMsg {
+                admin: "admin".to_string(),
+                lp_locker_contract: "locker".to_string(),
+                claim_interval: Some(0),
+            },
+        )
+        .unwrap();
+
+        // Base APR 10%, boost +5% if TVL < 5000, reduce -5% if TVL > 15000
+        let dynamic_config = DynamicAPRConfig {
+            base_apr: Decimal::percent(10),
+            tvl_threshold_low: Uint128::new(5000),
+            tvl_threshold_high: Uint128::new(15000),
+            adjustment_factor: Decimal::percent(5),
+        };
+
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            admin_info.clone(),
+            ExecuteMsg::CreateRewardPool {
+                lp_token: "lp_token".to_string(),
+                reward_token: AssetInfo::Native("paxi".to_string()),
+                apr: Decimal::percent(10),
+                dynamic_config: Some(dynamic_config),
+            },
+        )
+        .unwrap();
+
+        // Deposit rewards
+        let deposit_info = mock_info(
+            "admin",
+            &[cosmwasm_std::Coin {
+                denom: "paxi".to_string(),
+                amount: Uint128::new(1000000),
+            }],
+        );
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            deposit_info,
+            ExecuteMsg::DepositRewards { pool_id: 0 },
+        )
+        .unwrap();
+
+        // 1. TVL is 0 (below low threshold) -> APR should be 15%
+        let lock_hook = ExecuteMsg::LockerHook(LockerHookMsg::OnLock {
+            locker_id: 1,
+            owner: "user1".to_string(),
+            lp_token: "lp_token".to_string(),
+            amount: Uint128::new(1000),
+            locked_at: env.block.time.seconds(),
+            unlock_time: env.block.time.seconds() + 365 * 86400,
+        });
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("locker", &[]),
+            lock_hook,
+        )
+        .unwrap();
+
+        let pool: RewardPoolResponse = cosmwasm_std::from_json(
+            &query(deps.as_ref(), env.clone(), QueryMsg::RewardPool { pool_id: 0 }).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(pool.apr, Decimal::percent(15));
+
+        // 2. Add more TVL to get between thresholds (1000 + 9000 = 10000) -> APR should be 10%
+        let lock_hook2 = ExecuteMsg::LockerHook(LockerHookMsg::OnLock {
+            locker_id: 2,
+            owner: "user2".to_string(),
+            lp_token: "lp_token".to_string(),
+            amount: Uint128::new(9000),
+            locked_at: env.block.time.seconds(),
+            unlock_time: env.block.time.seconds() + 365 * 86400,
+        });
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("locker", &[]),
+            lock_hook2,
+        )
+        .unwrap();
+
+        // Advance time to allow some rewards to accrue
+        env.block.time = env.block.time.plus_seconds(864000);
+
+        // Trigger update via a claim
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("user1", &[]),
+            ExecuteMsg::ClaimRewards {
+                locker_id: 1,
+                pool_ids: vec![0],
+            },
+        )
+        .unwrap();
+
+        let pool: RewardPoolResponse = cosmwasm_std::from_json(
+            &query(deps.as_ref(), env.clone(), QueryMsg::RewardPool { pool_id: 0 }).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(pool.apr, Decimal::percent(10));
+
+        // 3. Add even more TVL to exceed high threshold (10000 + 10000 = 20000) -> APR should be 5%
+        let lock_hook3 = ExecuteMsg::LockerHook(LockerHookMsg::OnLock {
+            locker_id: 3,
+            owner: "user3".to_string(),
+            lp_token: "lp_token".to_string(),
+            amount: Uint128::new(10000),
+            locked_at: env.block.time.seconds(),
+            unlock_time: env.block.time.seconds() + 365 * 86400,
+        });
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("locker", &[]),
+            lock_hook3,
+        )
+        .unwrap();
+
+        // Advance time
+        env.block.time = env.block.time.plus_seconds(864000);
+
+        // Trigger update
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("user1", &[]),
+            ExecuteMsg::ClaimRewards {
+                locker_id: 1,
+                pool_ids: vec![0],
+            },
+        )
+        .unwrap();
+
+        let pool: RewardPoolResponse = cosmwasm_std::from_json(
+            &query(deps.as_ref(), env.clone(), QueryMsg::RewardPool { pool_id: 0 }).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(pool.apr, Decimal::percent(5));
     }
 }

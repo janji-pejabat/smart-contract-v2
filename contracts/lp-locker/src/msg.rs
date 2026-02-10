@@ -16,11 +16,17 @@ pub enum ExecuteMsg {
     /// Unlock LP tokens after unlock_time
     UnlockLP { locker_id: u64 },
 
+    /// Batch unlock multiple LP tokens
+    BatchUnlock { locker_ids: Vec<u64> },
+
     /// Extend lock duration
     ExtendLock {
         locker_id: u64,
         new_unlock_time: u64,
     },
+
+    /// Batch extend multiple lock durations
+    BatchExtendLock { locks: Vec<(u64, u64)> },
 
     /// Request emergency unlock (starts delay timer)
     RequestEmergencyUnlock { locker_id: u64 },
@@ -34,11 +40,14 @@ pub enum ExecuteMsg {
         reward_controller: Option<String>,
         emergency_unlock_delay: Option<u64>,
         platform_fee_bps: Option<u16>,
+        batch_limit: Option<u32>,
     },
 
     /// Admin: Whitelist LP token
     WhitelistLP {
         lp_token: String,
+        name: String,
+        symbol: String,
         min_lock_duration: u64,
         max_lock_duration: u64,
         bonus_multiplier: Decimal,
@@ -99,6 +108,7 @@ pub struct ConfigResponse {
     pub reward_controller: Option<Addr>,
     pub emergency_unlock_delay: u64,
     pub platform_fee_bps: u16,
+    pub batch_limit: u32,
     pub paused: bool,
     pub next_locker_id: u64,
 }
@@ -124,10 +134,15 @@ pub struct LockersResponse {
 #[cw_serde]
 pub struct WhitelistedLPResponse {
     pub lp_token: Addr,
+    pub name: String,
+    pub symbol: String,
     pub min_lock_duration: u64,
     pub max_lock_duration: u64,
     pub enabled: bool,
     pub bonus_multiplier: Decimal,
+    pub total_locked_all_time: Uint128,
+    pub total_unlocked_all_time: Uint128,
+    pub user_count: u64,
 }
 
 #[cw_serde]

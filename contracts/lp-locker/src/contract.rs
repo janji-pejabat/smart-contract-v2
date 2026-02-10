@@ -12,6 +12,7 @@ use crate::msg::{
 };
 use crate::state::{
     Config, Locker, WhitelistedLP, CONFIG, LOCKERS, TOTAL_LOCKED, USER_LOCKERS, WHITELISTED_LPS,
+    USER_LP_HISTORY,
 };
 
 const CONTRACT_NAME: &str = "crates.io:lp-locker";
@@ -35,6 +36,7 @@ pub fn instantiate(
         reward_controller: None,
         emergency_unlock_delay: msg.emergency_unlock_delay,
         platform_fee_bps: 0, // Can be updated later
+        batch_limit: 20,
         paused: false,
         next_locker_id: 0,
     };
@@ -60,10 +62,12 @@ pub fn execute(
     match msg {
         ExecuteMsg::Receive(msg) => execute_receive(deps, env, info, msg),
         ExecuteMsg::UnlockLP { locker_id } => execute_unlock_lp(deps, env, info, locker_id),
+        ExecuteMsg::BatchUnlock { locker_ids } => execute_batch_unlock(deps, env, info, locker_ids),
         ExecuteMsg::ExtendLock {
             locker_id,
             new_unlock_time,
         } => execute_extend_lock(deps, env, info, locker_id, new_unlock_time),
+        ExecuteMsg::BatchExtendLock { locks } => execute_batch_extend_lock(deps, env, info, locks),
         ExecuteMsg::RequestEmergencyUnlock { locker_id } => {
             execute_request_emergency_unlock(deps, env, info, locker_id)
         }
@@ -75,6 +79,7 @@ pub fn execute(
             reward_controller,
             emergency_unlock_delay,
             platform_fee_bps,
+            batch_limit,
         } => execute_update_config(
             deps,
             info,
@@ -82,9 +87,12 @@ pub fn execute(
             reward_controller,
             emergency_unlock_delay,
             platform_fee_bps,
+            batch_limit,
         ),
         ExecuteMsg::WhitelistLP {
             lp_token,
+            name,
+            symbol,
             min_lock_duration,
             max_lock_duration,
             bonus_multiplier,
@@ -92,6 +100,8 @@ pub fn execute(
             deps,
             info,
             lp_token,
+            name,
+            symbol,
             min_lock_duration,
             max_lock_duration,
             bonus_multiplier,
@@ -143,7 +153,7 @@ fn execute_lock_lp(
     metadata: Option<String>,
 ) -> Result<Response, ContractError> {
     // Validate LP token is whitelisted
-    let whitelist = WHITELISTED_LPS
+    let mut whitelist = WHITELISTED_LPS
         .may_load(deps.storage, &lp_token)?
         .ok_or(ContractError::LPNotWhitelisted {})?;
 
@@ -215,6 +225,14 @@ fn execute_lock_lp(
         Ok(total.unwrap_or_default().checked_add(lock_amount)?)
     })?;
 
+    // Update whitelist statistics
+    whitelist.total_locked_all_time = whitelist.total_locked_all_time.checked_add(lock_amount).map_err(cosmwasm_std::StdError::from)?;
+    if !USER_LP_HISTORY.has(deps.storage, (&sender, &lp_token)) {
+        USER_LP_HISTORY.save(deps.storage, (&sender, &lp_token), &true)?;
+        whitelist.user_count += 1;
+    }
+    WHITELISTED_LPS.save(deps.storage, &lp_token, &whitelist)?;
+
     // Notify reward controller
     if let Some(reward_controller) = config.reward_controller {
         messages.push(WasmMsg::Execute {
@@ -239,6 +257,26 @@ fn execute_lock_lp(
         .add_attribute("lp_token", lp_token)
         .add_attribute("amount", lock_amount)
         .add_attribute("unlock_time", unlock_time.to_string()))
+}
+
+fn execute_batch_unlock(
+    mut deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    locker_ids: Vec<u64>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    if locker_ids.len() > config.batch_limit as usize {
+        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err("Batch limit exceeded")));
+    }
+
+    let mut response = Response::new().add_attribute("action", "batch_unlock");
+    for locker_id in locker_ids {
+        let res = execute_unlock_lp(deps.branch(), env.clone(), info.clone(), locker_id)?;
+        response = response.add_submessages(res.messages);
+        response = response.add_attributes(res.attributes);
+    }
+    Ok(response)
 }
 
 fn execute_unlock_lp(
@@ -268,6 +306,13 @@ fn execute_unlock_lp(
     // Update total locked
     TOTAL_LOCKED.update(deps.storage, &locker.lp_token, |total| -> StdResult<_> {
         Ok(total.unwrap_or_default().checked_sub(locker.amount)?)
+    })?;
+
+    // Update whitelist statistics
+    WHITELISTED_LPS.update(deps.storage, &locker.lp_token, |wl| -> StdResult<_> {
+        let mut wl = wl.ok_or(cosmwasm_std::StdError::generic_err("Whitelist not found"))?;
+        wl.total_unlocked_all_time = wl.total_unlocked_all_time.checked_add(locker.amount)?;
+        Ok(wl)
     })?;
 
     // Calculate and deduct platform fee (on unlock)
@@ -322,6 +367,26 @@ fn execute_unlock_lp(
         .add_attribute("locker_id", locker_id.to_string())
         .add_attribute("owner", locker.owner)
         .add_attribute("amount", return_amount))
+}
+
+fn execute_batch_extend_lock(
+    mut deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    locks: Vec<(u64, u64)>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    if locks.len() > config.batch_limit as usize {
+        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err("Batch limit exceeded")));
+    }
+
+    let mut response = Response::new().add_attribute("action", "batch_extend_lock");
+    for (locker_id, new_unlock_time) in locks {
+        let res = execute_extend_lock(deps.branch(), env.clone(), info.clone(), locker_id, new_unlock_time)?;
+        response = response.add_submessages(res.messages);
+        response = response.add_attributes(res.attributes);
+    }
+    Ok(response)
 }
 
 fn execute_extend_lock(
@@ -493,6 +558,7 @@ fn execute_update_config(
     reward_controller: Option<String>,
     emergency_unlock_delay: Option<u64>,
     platform_fee_bps: Option<u16>,
+    batch_limit: Option<u32>,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -519,6 +585,10 @@ fn execute_update_config(
         config.platform_fee_bps = fee;
     }
 
+    if let Some(limit) = batch_limit {
+        config.batch_limit = limit;
+    }
+
     CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new().add_attribute("action", "update_config"))
@@ -528,6 +598,8 @@ fn execute_whitelist_lp(
     deps: DepsMut,
     info: MessageInfo,
     lp_token: String,
+    name: String,
+    symbol: String,
     min_lock_duration: u64,
     max_lock_duration: u64,
     bonus_multiplier: Decimal,
@@ -542,10 +614,15 @@ fn execute_whitelist_lp(
 
     let whitelist = WhitelistedLP {
         lp_token: lp_addr.clone(),
+        name,
+        symbol,
         min_lock_duration,
         max_lock_duration,
         enabled: true,
         bonus_multiplier,
+        total_locked_all_time: Uint128::zero(),
+        total_unlocked_all_time: Uint128::zero(),
+        user_count: 0,
     };
 
     WHITELISTED_LPS.save(deps.storage, &lp_addr, &whitelist)?;
@@ -629,6 +706,7 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         reward_controller: config.reward_controller,
         emergency_unlock_delay: config.emergency_unlock_delay,
         platform_fee_bps: config.platform_fee_bps,
+        batch_limit: config.batch_limit,
         paused: config.paused,
         next_locker_id: config.next_locker_id,
     })
@@ -692,10 +770,15 @@ fn query_whitelisted_lp(deps: Deps, lp_token: String) -> StdResult<WhitelistedLP
 
     Ok(WhitelistedLPResponse {
         lp_token: whitelist.lp_token,
+        name: whitelist.name,
+        symbol: whitelist.symbol,
         min_lock_duration: whitelist.min_lock_duration,
         max_lock_duration: whitelist.max_lock_duration,
         enabled: whitelist.enabled,
         bonus_multiplier: whitelist.bonus_multiplier,
+        total_locked_all_time: whitelist.total_locked_all_time,
+        total_unlocked_all_time: whitelist.total_unlocked_all_time,
+        user_count: whitelist.user_count,
     })
 }
 
@@ -717,10 +800,15 @@ fn query_all_whitelisted_lps(
             let (_, whitelist) = item?;
             Ok(WhitelistedLPResponse {
                 lp_token: whitelist.lp_token,
+                name: whitelist.name,
+                symbol: whitelist.symbol,
                 min_lock_duration: whitelist.min_lock_duration,
                 max_lock_duration: whitelist.max_lock_duration,
                 enabled: whitelist.enabled,
                 bonus_multiplier: whitelist.bonus_multiplier,
+                total_locked_all_time: whitelist.total_locked_all_time,
+                total_unlocked_all_time: whitelist.total_unlocked_all_time,
+                user_count: whitelist.user_count,
             })
         })
         .collect()

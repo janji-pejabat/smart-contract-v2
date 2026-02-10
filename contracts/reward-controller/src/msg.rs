@@ -1,4 +1,4 @@
-use crate::state::AssetInfo;
+use crate::state::{AssetInfo, DynamicAPRConfig};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw20::Cw20ReceiveMsg;
@@ -22,14 +22,27 @@ pub enum ExecuteMsg {
         locker_id: u64,
         pool_ids: Vec<u64>,
     },
+
+    BatchClaimRewards {
+        locker_ids: Vec<u64>,
+        pool_ids: Vec<u64>,
+    },
+
+    RegisterReferral {
+        referrer: String,
+    },
+
+    ClaimReferralRewards {},
     CreateRewardPool {
         lp_token: String,
         reward_token: AssetInfo,
         apr: Decimal,
+        dynamic_config: Option<DynamicAPRConfig>,
     },
     UpdateRewardPool {
         pool_id: u64,
         apr: Option<Decimal>,
+        dynamic_config: Option<Option<DynamicAPRConfig>>,
         enabled: Option<bool>,
     },
     DepositRewards {
@@ -43,6 +56,8 @@ pub enum ExecuteMsg {
         admin: Option<String>,
         lp_locker_contract: Option<String>,
         claim_interval: Option<u64>,
+        referral_commission_bps: Option<u16>,
+        batch_limit: Option<u32>,
     },
     Pause {},
     Resume {},
@@ -68,6 +83,13 @@ pub enum QueryMsg {
 
     #[returns(PendingRewardsResponse)]
     PendingRewards { user: String, pool_id: u64 },
+
+    #[returns(ReferrerBalancesResponse)]
+    ReferrerBalances {
+        referrer: String,
+        start_after: Option<AssetInfo>,
+        limit: Option<u32>,
+    },
 }
 
 #[cw_serde]
@@ -77,6 +99,8 @@ pub struct ConfigResponse {
     pub paused: bool,
     pub claim_interval: u64,
     pub next_pool_id: u64,
+    pub referral_commission_bps: u16,
+    pub batch_limit: u32,
 }
 
 #[cw_serde]
@@ -112,6 +136,7 @@ pub struct RewardPoolResponse {
     pub total_deposited: Uint128,
     pub total_claimed: Uint128,
     pub apr: Decimal,
+    pub dynamic_config: Option<DynamicAPRConfig>,
     pub enabled: bool,
 }
 
@@ -128,4 +153,16 @@ pub struct UserStakeResponse {
 pub struct PendingRewardsResponse {
     pub pool_id: u64,
     pub pending_amount: Uint128,
+}
+
+#[cw_serde]
+pub struct ReferrerBalanceInfo {
+    pub asset: AssetInfo,
+    pub amount: Uint128,
+}
+
+#[cw_serde]
+pub struct ReferrerBalancesResponse {
+    pub referrer: Addr,
+    pub balances: Vec<ReferrerBalanceInfo>,
 }

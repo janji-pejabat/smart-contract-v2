@@ -8,11 +8,12 @@ use cw20::Cw20ExecuteMsg;
 use crate::error::ContractError;
 use crate::msg::{
     ConfigResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, LockerHookMsg, PendingRewardsResponse,
-    QueryMsg, RewardPoolResponse, UserStakeResponse,
+    QueryMsg, ReferrerBalanceInfo, ReferrerBalancesResponse, RewardPoolResponse, UserStakeResponse,
 };
 use crate::state::{
-    AssetInfo, RewardConfig, RewardPool, UserReward, UserStake, CONFIG, LP_POOLS, POOLS,
-    TOTAL_STAKED, USER_REWARDS, USER_STAKED_LOCKERS, USER_STAKES,
+    AssetInfo, DynamicAPRConfig, RewardConfig, RewardPool, UserReward, UserStake, CONFIG, LP_POOLS,
+    POOLS, REFERRALS, REFERRER_BALANCES, TOTAL_STAKED, USER_REWARDS, USER_STAKED_LOCKERS,
+    USER_STAKES,
 };
 
 const CONTRACT_NAME: &str = "crates.io:reward-controller";
@@ -36,6 +37,8 @@ pub fn instantiate(
         paused: false,
         claim_interval: msg.claim_interval.unwrap_or(3600), // 1 hour default
         next_pool_id: 0,
+        referral_commission_bps: 500, // 5% default
+        batch_limit: 20,
     };
 
     CONFIG.save(deps.storage, &config)?;
@@ -60,16 +63,24 @@ pub fn execute(
             locker_id,
             pool_ids,
         } => execute_claim_rewards(deps, env, info, locker_id, pool_ids),
+        ExecuteMsg::BatchClaimRewards {
+            locker_ids,
+            pool_ids,
+        } => execute_batch_claim_rewards(deps, env, info, locker_ids, pool_ids),
+        ExecuteMsg::RegisterReferral { referrer } => execute_register_referral(deps, info, referrer),
+        ExecuteMsg::ClaimReferralRewards {} => execute_claim_referral_rewards(deps, env, info),
         ExecuteMsg::CreateRewardPool {
             lp_token,
             reward_token,
             apr,
-        } => execute_create_pool(deps, env, info, lp_token, reward_token, apr),
+            dynamic_config,
+        } => execute_create_pool(deps, env, info, lp_token, reward_token, apr, dynamic_config),
         ExecuteMsg::UpdateRewardPool {
             pool_id,
             apr,
+            dynamic_config,
             enabled,
-        } => execute_update_pool(deps, env, info, pool_id, apr, enabled),
+        } => execute_update_pool(deps, env, info, pool_id, apr, dynamic_config, enabled),
         ExecuteMsg::DepositRewards { pool_id } => execute_deposit_rewards(deps, env, info, pool_id),
         ExecuteMsg::WithdrawRewards { pool_id, amount } => {
             execute_withdraw_rewards(deps, env, info, pool_id, amount)
@@ -78,7 +89,17 @@ pub fn execute(
             admin,
             lp_locker_contract,
             claim_interval,
-        } => execute_update_config(deps, info, admin, lp_locker_contract, claim_interval),
+            referral_commission_bps,
+            batch_limit,
+        } => execute_update_config(
+            deps,
+            info,
+            admin,
+            lp_locker_contract,
+            claim_interval,
+            referral_commission_bps,
+            batch_limit,
+        ),
         ExecuteMsg::Pause {} => execute_pause(deps, info),
         ExecuteMsg::Resume {} => execute_resume(deps, info),
     }
@@ -201,6 +222,7 @@ fn execute_locker_hook(
             // Final update of rewards before removing stake
             let pool_ids = get_pools_for_lp(deps.as_ref(), &stake.lp_token)?;
             let mut messages: Vec<CosmosMsg> = vec![];
+            let referrer = REFERRALS.may_load(deps.storage, &stake.user)?;
 
             for pool_id in pool_ids {
                 update_user_reward(deps.storage, &env, locker_id, pool_id)?;
@@ -223,12 +245,31 @@ fn execute_locker_hook(
                             .map_err(cosmwasm_std::StdError::from)?;
                         POOLS.save(deps.storage, pool_id, &pool)?;
 
+                        // Handle referral commission
+                        let mut user_amount = amount;
+                        if let Some(ref_addr) = &referrer {
+                            let commission =
+                                amount.multiply_ratio(config.referral_commission_bps, 10000u128);
+                            if !commission.is_zero() {
+                                user_amount = amount
+                                    .checked_sub(commission)
+                                    .map_err(cosmwasm_std::StdError::from)?;
+                                REFERRER_BALANCES.update(
+                                    deps.storage,
+                                    (ref_addr, pool.reward_token.to_key()),
+                                    |bal: Option<Uint128>| -> StdResult<_> {
+                                        Ok(bal.unwrap_or_default().checked_add(commission)?)
+                                    },
+                                )?;
+                            }
+                        }
+
                         let transfer_msg = match &pool.reward_token {
                             AssetInfo::Cw20(addr) => CosmosMsg::Wasm(WasmMsg::Execute {
                                 contract_addr: addr.to_string(),
                                 msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
                                     recipient: stake.user.to_string(),
-                                    amount,
+                                    amount: user_amount,
                                 })?,
                                 funds: vec![],
                             }),
@@ -236,7 +277,7 @@ fn execute_locker_hook(
                                 to_address: stake.user.to_string(),
                                 amount: vec![cosmwasm_std::Coin {
                                     denom: denom.clone(),
-                                    amount,
+                                    amount: user_amount,
                                 }],
                             }),
                         };
@@ -290,7 +331,29 @@ fn update_pool(
     pool_id: u64,
 ) -> Result<RewardPool, ContractError> {
     let mut pool = POOLS.load(storage, pool_id)?;
+
+    // Handle dynamic APR adjustment if configured
+    if let Some(config) = &pool.dynamic_config {
+        let tvl = TOTAL_STAKED
+            .may_load(storage, &pool.lp_token)?
+            .unwrap_or_default();
+        let mut adjusted_apr = config.base_apr;
+
+        if tvl < config.tvl_threshold_low {
+            // TVL rendah -> APR meningkat (boost by adjustment_factor)
+            adjusted_apr = config
+                .base_apr
+                .checked_add(config.adjustment_factor)
+                .map_err(cosmwasm_std::StdError::from)?;
+        } else if tvl > config.tvl_threshold_high {
+            // TVL tinggi -> APR menurun (reduce by adjustment_factor)
+            adjusted_apr = config.base_apr.saturating_sub(config.adjustment_factor);
+        }
+        pool.apr = adjusted_apr;
+    }
+
     if pool.last_update >= env.block.time.seconds() {
+        POOLS.save(storage, pool_id, &pool)?;
         return Ok(pool);
     }
 
@@ -365,6 +428,37 @@ fn calculate_pending_for_user(
     Ok(pending)
 }
 
+fn execute_batch_claim_rewards(
+    mut deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    locker_ids: Vec<u64>,
+    pool_ids: Vec<u64>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    if locker_ids.len() > config.batch_limit as usize {
+        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
+            "Batch limit exceeded",
+        )));
+    }
+
+    let mut response = Response::new().add_attribute("action", "batch_claim_rewards");
+    for locker_id in locker_ids {
+        let res = execute_claim_rewards(
+            deps.branch(),
+            env.clone(),
+            info.clone(),
+            locker_id,
+            pool_ids.clone(),
+        )?;
+        for msg in res.messages {
+            response = response.add_submessage(msg);
+        }
+        response = response.add_attributes(res.attributes);
+    }
+    Ok(response)
+}
+
 fn execute_claim_rewards(
     deps: DepsMut,
     env: Env,
@@ -381,6 +475,8 @@ fn execute_claim_rewards(
 
     let mut messages: Vec<CosmosMsg> = vec![];
     let mut total_claimed = Uint128::zero();
+
+    let referrer = REFERRALS.may_load(deps.storage, &info.sender)?;
 
     for pool_id in pool_ids {
         update_user_reward(deps.storage, &env, locker_id, pool_id)?;
@@ -406,8 +502,6 @@ fn execute_claim_rewards(
         // Check if pool has enough rewards
         let available = pool.total_deposited.saturating_sub(pool.total_claimed);
         if amount > available {
-            // Partial claim if pool is running low? Or fail?
-            // Better to fail or claim available. Let's fail for now to be safe.
             return Err(ContractError::InsufficientRewards {});
         }
 
@@ -421,12 +515,30 @@ fn execute_claim_rewards(
             .map_err(cosmwasm_std::StdError::from)?;
         POOLS.save(deps.storage, pool_id, &pool)?;
 
+        // Handle referral commission
+        let mut user_amount = amount;
+        if let Some(ref_addr) = &referrer {
+            let commission = amount.multiply_ratio(config.referral_commission_bps, 10000u128);
+            if !commission.is_zero() {
+                user_amount = amount
+                    .checked_sub(commission)
+                    .map_err(cosmwasm_std::StdError::from)?;
+                REFERRER_BALANCES.update(
+                    deps.storage,
+                    (ref_addr, pool.reward_token.to_key()),
+                    |bal: Option<Uint128>| -> StdResult<_> {
+                        Ok(bal.unwrap_or_default().checked_add(commission)?)
+                    },
+                )?;
+            }
+        }
+
         let transfer_msg = match &pool.reward_token {
             AssetInfo::Cw20(addr) => CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: addr.to_string(),
                 msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
                     recipient: info.sender.to_string(),
-                    amount,
+                    amount: user_amount,
                 })?,
                 funds: vec![],
             }),
@@ -434,14 +546,14 @@ fn execute_claim_rewards(
                 to_address: info.sender.to_string(),
                 amount: vec![Coin {
                     denom: denom.clone(),
-                    amount,
+                    amount: user_amount,
                 }],
             }),
         };
 
         messages.push(transfer_msg);
         total_claimed = total_claimed
-            .checked_add(amount)
+            .checked_add(user_amount)
             .map_err(cosmwasm_std::StdError::from)?;
     }
 
@@ -462,6 +574,7 @@ fn execute_create_pool(
     lp_token: String,
     reward_token: AssetInfo,
     apr: Decimal,
+    dynamic_config: Option<DynamicAPRConfig>,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -482,6 +595,7 @@ fn execute_create_pool(
         total_deposited: Uint128::zero(),
         total_claimed: Uint128::zero(),
         apr,
+        dynamic_config,
         last_update: env.block.time.seconds(),
         reward_per_token_stored: Decimal::zero(),
         enabled: true,
@@ -501,12 +615,90 @@ fn execute_create_pool(
         .add_attribute("pool_id", pool_id.to_string()))
 }
 
+fn execute_register_referral(
+    deps: DepsMut,
+    info: MessageInfo,
+    referrer: String,
+) -> Result<Response, ContractError> {
+    let referee = info.sender;
+    let referrer_addr = deps.api.addr_validate(&referrer)?;
+
+    if referee == referrer_addr {
+        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
+            "Cannot refer yourself",
+        )));
+    }
+
+    if REFERRALS.has(deps.storage, &referee) {
+        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
+            "Referral already registered",
+        )));
+    }
+
+    REFERRALS.save(deps.storage, &referee, &referrer_addr)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "register_referral")
+        .add_attribute("referrer", referrer)
+        .add_attribute("referee", referee))
+}
+
+fn execute_claim_referral_rewards(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+) -> Result<Response, ContractError> {
+    let referrer = info.sender;
+    let mut messages: Vec<CosmosMsg> = vec![];
+
+    let balances: Vec<(String, Uint128)> = REFERRER_BALANCES
+        .prefix(&referrer)
+        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+        .filter_map(|item: StdResult<(String, Uint128)>| item.ok())
+        .collect();
+
+    for (asset_key, amount) in balances {
+        if amount.is_zero() {
+            continue;
+        }
+
+        REFERRER_BALANCES.remove(deps.storage, (&referrer, asset_key.clone()));
+        let asset = AssetInfo::from_key(asset_key);
+
+        let transfer_msg = match asset {
+            AssetInfo::Cw20(addr) => CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: addr.to_string(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
+                    recipient: referrer.to_string(),
+                    amount,
+                })?,
+                funds: vec![],
+            }),
+            AssetInfo::Native(denom) => CosmosMsg::Bank(BankMsg::Send {
+                to_address: referrer.to_string(),
+                amount: vec![Coin { denom, amount }],
+            }),
+        };
+        messages.push(transfer_msg);
+    }
+
+    if messages.is_empty() {
+        return Err(ContractError::NoRewards {});
+    }
+
+    Ok(Response::new()
+        .add_messages(messages)
+        .add_attribute("action", "claim_referral_rewards")
+        .add_attribute("referrer", referrer))
+}
+
 fn execute_update_pool(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
     pool_id: u64,
     apr: Option<Decimal>,
+    dynamic_config: Option<Option<DynamicAPRConfig>>,
     enabled: Option<bool>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
@@ -520,6 +712,10 @@ fn execute_update_pool(
 
     if let Some(new_apr) = apr {
         pool.apr = new_apr;
+    }
+
+    if let Some(new_config) = dynamic_config {
+        pool.dynamic_config = new_config;
     }
 
     if let Some(status) = enabled {
@@ -600,6 +796,8 @@ fn execute_update_config(
     admin: Option<String>,
     lp_locker_contract: Option<String>,
     claim_interval: Option<u64>,
+    referral_commission_bps: Option<u16>,
+    batch_limit: Option<u32>,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -617,6 +815,19 @@ fn execute_update_config(
 
     if let Some(interval) = claim_interval {
         config.claim_interval = interval;
+    }
+
+    if let Some(bps) = referral_commission_bps {
+        if bps > 10000 {
+            return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
+                "Invalid commission bps",
+            )));
+        }
+        config.referral_commission_bps = bps;
+    }
+
+    if let Some(limit) = batch_limit {
+        config.batch_limit = limit;
     }
 
     CONFIG.save(deps.storage, &config)?;
@@ -664,6 +875,11 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::PendingRewards { user, pool_id } => {
             to_json_binary(&query_pending_rewards(deps, env, user, pool_id)?)
         }
+        QueryMsg::ReferrerBalances {
+            referrer,
+            start_after,
+            limit,
+        } => to_json_binary(&query_referrer_balances(deps, referrer, start_after, limit)?),
     }
 }
 
@@ -675,6 +891,8 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         paused: config.paused,
         claim_interval: config.claim_interval,
         next_pool_id: config.next_pool_id,
+        referral_commission_bps: config.referral_commission_bps,
+        batch_limit: config.batch_limit,
     })
 }
 
@@ -687,6 +905,7 @@ fn query_pool(deps: Deps, pool_id: u64) -> StdResult<RewardPoolResponse> {
         total_deposited: pool.total_deposited,
         total_claimed: pool.total_claimed,
         apr: pool.apr,
+        dynamic_config: pool.dynamic_config,
         enabled: pool.enabled,
     })
 }
@@ -711,6 +930,7 @@ fn query_all_pools(
                 total_deposited: pool.total_deposited,
                 total_claimed: pool.total_claimed,
                 apr: pool.apr,
+                dynamic_config: pool.dynamic_config,
                 enabled: pool.enabled,
             })
         })
@@ -761,6 +981,35 @@ fn query_pending_rewards(
     Ok(PendingRewardsResponse {
         pool_id,
         pending_amount: total_pending,
+    })
+}
+
+fn query_referrer_balances(
+    deps: Deps,
+    referrer: String,
+    start_after: Option<AssetInfo>,
+    limit: Option<u32>,
+) -> StdResult<ReferrerBalancesResponse> {
+    let referrer_addr = deps.api.addr_validate(&referrer)?;
+    let limit = limit.unwrap_or(10).min(30) as usize;
+    let start = start_after.map(|a| cw_storage_plus::Bound::exclusive(a.to_key()));
+
+    let balances: Vec<ReferrerBalanceInfo> = REFERRER_BALANCES
+        .prefix(&referrer_addr)
+        .range(deps.storage, start, None, cosmwasm_std::Order::Ascending)
+        .take(limit)
+        .map(|item: StdResult<(String, Uint128)>| {
+            let (asset_key, amount) = item?;
+            Ok(ReferrerBalanceInfo {
+                asset: AssetInfo::from_key(asset_key),
+                amount,
+            })
+        })
+        .collect::<StdResult<_>>()?;
+
+    Ok(ReferrerBalancesResponse {
+        referrer: referrer_addr,
+        balances,
     })
 }
 

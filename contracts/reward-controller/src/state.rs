@@ -9,12 +9,39 @@ pub struct RewardConfig {
     pub paused: bool,
     pub claim_interval: u64,
     pub next_pool_id: u64,
+    pub referral_commission_bps: u16,
+    pub batch_limit: u32,
 }
 
 #[cw_serde]
 pub enum AssetInfo {
     Cw20(Addr),
     Native(String),
+}
+
+impl AssetInfo {
+    pub fn to_key(&self) -> String {
+        match self {
+            AssetInfo::Cw20(addr) => format!("c:{}", addr),
+            AssetInfo::Native(denom) => format!("n:{}", denom),
+        }
+    }
+
+    pub fn from_key(key: String) -> Self {
+        let parts: Vec<&str> = key.splitn(2, ':').collect();
+        match parts[0] {
+            "c" => AssetInfo::Cw20(Addr::unchecked(parts[1])),
+            _ => AssetInfo::Native(parts[1].to_string()),
+        }
+    }
+}
+
+#[cw_serde]
+pub struct DynamicAPRConfig {
+    pub base_apr: Decimal,
+    pub tvl_threshold_low: Uint128,
+    pub tvl_threshold_high: Uint128,
+    pub adjustment_factor: Decimal, // e.g. 0.2 for 20% boost/reduction
 }
 
 #[cw_serde]
@@ -24,7 +51,8 @@ pub struct RewardPool {
     pub reward_token: AssetInfo,
     pub total_deposited: Uint128,
     pub total_claimed: Uint128,
-    pub apr: Decimal, // Annual Percentage Rate (e.g. 0.1 for 10%)
+    pub apr: Decimal, // Active APR
+    pub dynamic_config: Option<DynamicAPRConfig>,
     pub last_update: u64,
     pub reward_per_token_stored: Decimal,
     pub enabled: bool,
@@ -56,3 +84,5 @@ pub const USER_STAKES: Map<u64, UserStake> = Map::new("user_stakes"); // Keyed b
 pub const USER_STAKED_LOCKERS: Map<(&Addr, u64), bool> = Map::new("user_staked_lockers"); // (owner, locker_id)
 pub const USER_REWARDS: Map<(u64, u64), UserReward> = Map::new("user_rewards"); // (locker_id, pool_id)
 pub const TOTAL_STAKED: Map<&Addr, Uint128> = Map::new("total_staked"); // Per LP token
+pub const REFERRALS: Map<&Addr, Addr> = Map::new("referrals"); // referee -> referrer
+pub const REFERRER_BALANCES: Map<(&Addr, String), Uint128> = Map::new("referrer_balances");
