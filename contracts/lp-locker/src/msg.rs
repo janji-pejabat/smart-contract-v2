@@ -140,3 +140,22 @@ pub struct TotalLockedResponse {
 pub enum MigrateMsg {
     V1ToV2 { reward_controller: Option<String> },
 }
+
+#[cw_serde]
+pub enum LockerHookMsg {
+    OnLock {
+        locker_id: u64,
+        owner: String,
+        lp_token: String,
+        amount: Uint128,
+        unlock_time: u64,
+    },
+    OnExtend {
+        locker_id: u64,
+        new_unlock_time: u64,
+    },
+    OnUnlock {
+        locker_id: u64,
+        owner: String,
+    },
+}

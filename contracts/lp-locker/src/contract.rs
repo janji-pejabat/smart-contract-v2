@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     entry_point, to_json_binary, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, WasmMsg, Addr, Decimal,
+    Response, StdResult, Uint128, WasmMsg, Addr, Decimal, Binary,
 };
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
@@ -9,6 +9,7 @@ use crate::error::ContractError;
 use crate::msg::{
     ConfigResponse, ExecuteMsg, InstantiateMsg, LockerResponse, LockersResponse,
     QueryMsg, WhitelistedLPResponse, TotalLockedResponse, Cw20HookMsg, MigrateMsg,
+    LockerHookMsg,
 };
 use crate::state::{
     Config, Locker, WhitelistedLP, CONFIG, LOCKERS, USER_LOCKERS, WHITELISTED_LPS, TOTAL_LOCKED,
@@ -161,6 +162,25 @@ fn execute_lock_lp(
 
     // Create locker
     let mut config = CONFIG.load(deps.storage)?;
+
+    // Calculate and deduct platform fee (on lock)
+    let mut messages: Vec<WasmMsg> = vec![];
+    let mut lock_amount = amount;
+    if config.platform_fee_bps > 0 {
+        let fee_amount = amount.multiply_ratio(config.platform_fee_bps, 10000u128);
+        if !fee_amount.is_zero() {
+            lock_amount = amount.checked_sub(fee_amount).map_err(cosmwasm_std::StdError::from)?;
+            messages.push(WasmMsg::Execute {
+                contract_addr: lp_token.to_string(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
+                    recipient: config.admin.to_string(),
+                    amount: fee_amount,
+                })?,
+                funds: vec![],
+            });
+        }
+    }
+
     let locker_id = config.next_locker_id;
     config.next_locker_id += 1;
     CONFIG.save(deps.storage, &config)?;
@@ -169,7 +189,7 @@ fn execute_lock_lp(
         id: locker_id,
         owner: sender.clone(),
         lp_token: lp_token.clone(),
-        amount,
+        amount: lock_amount,
         locked_at: current_time,
         unlock_time,
         extended_count: 0,
@@ -185,16 +205,32 @@ fn execute_lock_lp(
         deps.storage,
         &lp_token,
         |total| -> StdResult<_> {
-            Ok(total.unwrap_or_default().checked_add(amount)?)
+            Ok(total.unwrap_or_default().checked_add(lock_amount)?)
         },
     )?;
 
+    // Notify reward controller
+    if let Some(reward_controller) = config.reward_controller {
+        messages.push(WasmMsg::Execute {
+            contract_addr: reward_controller.to_string(),
+            msg: to_json_binary(&LockerHookMsg::OnLock {
+                locker_id,
+                owner: sender.to_string(),
+                lp_token: lp_token.to_string(),
+                amount: lock_amount,
+                unlock_time,
+            })?,
+            funds: vec![],
+        });
+    }
+
     Ok(Response::new()
+        .add_messages(messages)
         .add_attribute("action", "lock_lp")
         .add_attribute("locker_id", locker_id.to_string())
         .add_attribute("owner", sender)
         .add_attribute("lp_token", lp_token)
-        .add_attribute("amount", amount)
+        .add_attribute("amount", lock_amount)
         .add_attribute("unlock_time", unlock_time.to_string()))
 }
 
@@ -205,6 +241,7 @@ fn execute_unlock_lp(
     locker_id: u64,
 ) -> Result<Response, ContractError> {
     let locker = LOCKERS.load(deps.storage, locker_id)?;
+    let config = CONFIG.load(deps.storage)?;
 
     // Verify owner
     if locker.owner != info.sender {
@@ -230,22 +267,53 @@ fn execute_unlock_lp(
         },
     )?;
 
+    // Calculate and deduct platform fee (on unlock)
+    let mut messages: Vec<WasmMsg> = vec![];
+    let mut return_amount = locker.amount;
+
+    if config.platform_fee_bps > 0 {
+        let fee_amount = locker.amount.multiply_ratio(config.platform_fee_bps, 10000u128);
+        if !fee_amount.is_zero() {
+            return_amount = locker.amount.checked_sub(fee_amount).map_err(cosmwasm_std::StdError::from)?;
+            messages.push(WasmMsg::Execute {
+                contract_addr: locker.lp_token.to_string(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
+                    recipient: config.admin.to_string(),
+                    amount: fee_amount,
+                })?,
+                funds: vec![],
+            });
+        }
+    }
+
     // Transfer LP tokens back
-    let transfer_msg = WasmMsg::Execute {
+    messages.push(WasmMsg::Execute {
         contract_addr: locker.lp_token.to_string(),
         msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
             recipient: locker.owner.to_string(),
-            amount: locker.amount,
+            amount: return_amount,
         })?,
         funds: vec![],
-    };
+    });
+
+    // Notify reward controller
+    if let Some(reward_controller) = config.reward_controller {
+        messages.push(WasmMsg::Execute {
+            contract_addr: reward_controller.to_string(),
+            msg: to_json_binary(&LockerHookMsg::OnUnlock {
+                locker_id,
+                owner: locker.owner.to_string(),
+            })?,
+            funds: vec![],
+        });
+    }
 
     Ok(Response::new()
-        .add_message(transfer_msg)
+        .add_messages(messages)
         .add_attribute("action", "unlock_lp")
         .add_attribute("locker_id", locker_id.to_string())
         .add_attribute("owner", locker.owner)
-        .add_attribute("amount", locker.amount))
+        .add_attribute("amount", return_amount))
 }
 
 fn execute_extend_lock(
@@ -283,11 +351,25 @@ fn execute_extend_lock(
 
     LOCKERS.save(deps.storage, locker_id, &locker)?;
 
-    Ok(Response::new()
+    let mut response = Response::new()
         .add_attribute("action", "extend_lock")
         .add_attribute("locker_id", locker_id.to_string())
         .add_attribute("old_unlock_time", old_unlock_time.to_string())
-        .add_attribute("new_unlock_time", new_unlock_time.to_string()))
+        .add_attribute("new_unlock_time", new_unlock_time.to_string());
+
+    let config = CONFIG.load(deps.storage)?;
+    if let Some(reward_controller) = config.reward_controller {
+        response = response.add_message(WasmMsg::Execute {
+            contract_addr: reward_controller.to_string(),
+            msg: to_json_binary(&LockerHookMsg::OnExtend {
+                locker_id,
+                new_unlock_time,
+            })?,
+            funds: vec![],
+        });
+    }
+
+    Ok(response)
 }
 
 fn execute_request_emergency_unlock(
@@ -346,18 +428,50 @@ fn execute_emergency_unlock(
         },
     )?;
 
+    // Calculate and deduct platform fee
+    let config = CONFIG.load(deps.storage)?;
+    let mut messages: Vec<WasmMsg> = vec![];
+    let mut return_amount = locker.amount;
+
+    if config.platform_fee_bps > 0 {
+        let fee_amount = locker.amount.multiply_ratio(config.platform_fee_bps, 10000u128);
+        if !fee_amount.is_zero() {
+            return_amount = locker.amount.checked_sub(fee_amount).map_err(cosmwasm_std::StdError::from)?;
+            messages.push(WasmMsg::Execute {
+                contract_addr: locker.lp_token.to_string(),
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
+                    recipient: config.admin.to_string(),
+                    amount: fee_amount,
+                })?,
+                funds: vec![],
+            });
+        }
+    }
+
     // Transfer LP tokens back
-    let transfer_msg = WasmMsg::Execute {
+    messages.push(WasmMsg::Execute {
         contract_addr: locker.lp_token.to_string(),
         msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
             recipient: locker.owner.to_string(),
-            amount: locker.amount,
+            amount: return_amount,
         })?,
         funds: vec![],
-    };
+    });
+
+    // Notify reward controller
+    if let Some(reward_controller) = config.reward_controller {
+        messages.push(WasmMsg::Execute {
+            contract_addr: reward_controller.to_string(),
+            msg: to_json_binary(&LockerHookMsg::OnUnlock {
+                locker_id,
+                owner: locker.owner.to_string(),
+            })?,
+            funds: vec![],
+        });
+    }
 
     Ok(Response::new()
-        .add_message(transfer_msg)
+        .add_messages(messages)
         .add_attribute("action", "emergency_unlock")
         .add_attribute("locker_id", locker_id.to_string()))
 }
@@ -528,7 +642,7 @@ fn query_lockers_by_owner(
 ) -> StdResult<LockersResponse> {
     let owner_addr = deps.api.addr_validate(&owner)?;
     let limit = limit.unwrap_or(10).min(30) as usize;
-    let start = start_after.map(|id| Bound::exclusive((&owner_addr, id)));
+    let start = start_after.map(Bound::exclusive);
 
     let lockers: Vec<LockerResponse> = USER_LOCKERS
         .prefix(&owner_addr)
@@ -575,9 +689,8 @@ fn query_all_whitelisted_lps(
     limit: Option<u32>,
 ) -> StdResult<Vec<WhitelistedLPResponse>> {
     let limit = limit.unwrap_or(10).min(30) as usize;
-    let start = start_after.as_ref().map(|s| {
-        deps.api.addr_validate(s).map(|addr| Bound::exclusive(&addr))
-    }).transpose()?;
+    let start_addr = start_after.map(|s| deps.api.addr_validate(&s)).transpose()?;
+    let start = start_addr.as_ref().map(Bound::exclusive);
 
     WHITELISTED_LPS
         .range(deps.storage, start, None, cosmwasm_std::Order::Ascending)
