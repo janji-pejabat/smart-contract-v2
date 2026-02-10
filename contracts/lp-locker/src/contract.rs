@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, WasmMsg, CosmosMsg, Addr, Decimal,
+    entry_point, to_json_binary, Deps, DepsMut, Env, MessageInfo,
+    Response, StdResult, Uint128, WasmMsg, Addr, Decimal,
 };
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
