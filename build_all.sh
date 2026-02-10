@@ -21,6 +21,7 @@ echo ""
 CONTRACTS=(
     "lp-locker"
     "reward-controller"
+    "prc20-vesting"
 )
 
 # Validate project structure
