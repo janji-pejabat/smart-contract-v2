@@ -15,7 +15,7 @@ use crate::msg::{
 use crate::state::{
     RewardConfig, RewardPool, UserStake, UserReward, AssetInfo,
     CONFIG, POOLS, USER_STAKES, USER_REWARDS, TOTAL_STAKED,
-    USER_STAKED_LOCKERS,
+    USER_STAKED_LOCKERS, LP_POOLS,
 };
 
 const CONTRACT_NAME: &str = "crates.io:reward-controller";
@@ -131,7 +131,7 @@ fn execute_locker_hook(
         LockerHookMsg::OnLock { locker_id, owner, lp_token, amount, unlock_time } => {
             let owner_addr = deps.api.addr_validate(&owner)?;
             let lp_token_addr = deps.api.addr_validate(&lp_token)?;
-            let duration = unlock_time.checked_sub(env.block.time.seconds()).unwrap_or(0);
+            let duration = unlock_time.saturating_sub(env.block.time.seconds());
             let bonus_multiplier = calculate_bonus_multiplier(duration);
 
             let stake = UserStake {
@@ -158,12 +158,12 @@ fn execute_locker_hook(
             }
 
             TOTAL_STAKED.update(deps.storage, &lp_token_addr, |total| -> StdResult<_> {
-                Ok(total.unwrap_or_default().checked_add(amount).map_err(cosmwasm_std::StdError::from)?)
+                total.unwrap_or_default().checked_add(amount).map_err(cosmwasm_std::StdError::from)
             })?;
         }
         LockerHookMsg::OnExtend { locker_id, new_unlock_time } => {
             let mut stake = USER_STAKES.load(deps.storage, locker_id)?;
-            let duration = new_unlock_time.checked_sub(env.block.time.seconds()).unwrap_or(0);
+            let duration = new_unlock_time.saturating_sub(env.block.time.seconds());
             let new_multiplier = calculate_bonus_multiplier(duration);
 
             // Update all user reward records before changing multiplier
@@ -187,7 +187,7 @@ fn execute_locker_hook(
             USER_STAKED_LOCKERS.remove(deps.storage, (&stake.user, locker_id));
             USER_STAKES.remove(deps.storage, locker_id);
             TOTAL_STAKED.update(deps.storage, &stake.lp_token, |total| -> StdResult<_> {
-                Ok(total.unwrap_or_default().checked_sub(stake.lp_amount).map_err(cosmwasm_std::StdError::from)?)
+                total.unwrap_or_default().checked_sub(stake.lp_amount).map_err(cosmwasm_std::StdError::from)
             })?;
         }
     }
@@ -210,18 +210,7 @@ fn calculate_bonus_multiplier(duration: u64) -> Decimal {
 }
 
 fn get_pools_for_lp(deps: Deps, lp_token: &Addr) -> StdResult<Vec<u64>> {
-    let pools: Vec<u64> = POOLS
-        .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
-        .filter_map(|item| {
-            if let Ok((id, pool)) = item {
-                if pool.lp_token == *lp_token {
-                    return Some(id);
-                }
-            }
-            None
-        })
-        .collect();
-    Ok(pools)
+    Ok(LP_POOLS.may_load(deps.storage, lp_token)?.unwrap_or_default())
 }
 
 fn update_pool(storage: &mut dyn Storage, env: &Env, pool_id: u64) -> Result<RewardPool, ContractError> {
@@ -391,7 +380,7 @@ fn execute_create_pool(
 
     let pool = RewardPool {
         pool_id,
-        lp_token: lp_token_addr,
+        lp_token: lp_token_addr.clone(),
         reward_token,
         total_deposited: Uint128::zero(),
         total_claimed: Uint128::zero(),
@@ -402,6 +391,13 @@ fn execute_create_pool(
     };
 
     POOLS.save(deps.storage, pool_id, &pool)?;
+
+    // Update LP_POOLS index
+    LP_POOLS.update(deps.storage, &lp_token_addr, |pools| -> StdResult<_> {
+        let mut pools = pools.unwrap_or_default();
+        pools.push(pool_id);
+        Ok(pools)
+    })?;
 
     Ok(Response::new()
         .add_attribute("action", "create_reward_pool")
@@ -595,7 +591,7 @@ fn query_all_pools(
     limit: Option<u32>,
 ) -> StdResult<Vec<RewardPoolResponse>> {
     let limit = limit.unwrap_or(10).min(30) as usize;
-    let start = start_after.map(|id| cw_storage_plus::Bound::exclusive(id));
+    let start = start_after.map(cw_storage_plus::Bound::exclusive);
 
     POOLS
         .range(deps.storage, start, None, cosmwasm_std::Order::Ascending)
@@ -686,5 +682,5 @@ fn calculate_pending_rewards_for_locker(
     }
 
     let pending = calculate_pending_for_user(&stake, &pool, &user_reward)?;
-    Ok(user_reward.rewards_accrued.checked_add(pending).map_err(cosmwasm_std::StdError::from)?)
+    user_reward.rewards_accrued.checked_add(pending).map_err(cosmwasm_std::StdError::from)
 }

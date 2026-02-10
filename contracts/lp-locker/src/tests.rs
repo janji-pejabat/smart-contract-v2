@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::contract::{execute, instantiate};
-    use crate::msg::{ExecuteMsg, InstantiateMsg, Cw20HookMsg};
+    use crate::msg::{Cw20HookMsg, ExecuteMsg, InstantiateMsg};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{to_json_binary, Decimal, Uint128};
     use cw20::Cw20ReceiveMsg;

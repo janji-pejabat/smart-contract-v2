@@ -50,6 +50,7 @@ pub struct UserReward {
 
 pub const CONFIG: Item<RewardConfig> = Item::new("config");
 pub const POOLS: Map<u64, RewardPool> = Map::new("pools");
+pub const LP_POOLS: Map<&Addr, Vec<u64>> = Map::new("lp_pools");
 pub const USER_STAKES: Map<u64, UserStake> = Map::new("user_stakes"); // Keyed by locker_id
 pub const USER_STAKED_LOCKERS: Map<(&Addr, u64), bool> = Map::new("user_staked_lockers"); // (owner, locker_id)
 pub const USER_REWARDS: Map<(u64, u64), UserReward> = Map::new("user_rewards"); // (locker_id, pool_id)
