@@ -36,7 +36,7 @@ pub fn instantiate(
         admin,
         reward_controller: None,
         emergency_unlock_delay: msg.emergency_unlock_delay,
-        platform_fee_bps: 0, // Can be updated later
+        platform_fee_bps: 0,
         batch_limit: 20,
         paused: false,
         next_locker_id: 0,
@@ -133,7 +133,6 @@ fn execute_receive(
         return Err(ContractError::ZeroAmount {});
     }
 
-    // Parse hook message
     let msg: Cw20HookMsg = from_json(&wrapper.msg)?;
 
     match msg {
@@ -153,7 +152,6 @@ fn execute_lock_lp(
     unlock_time: u64,
     metadata: Option<String>,
 ) -> Result<Response, ContractError> {
-    // Validate LP token is whitelisted
     let mut whitelist = WHITELISTED_LPS
         .may_load(deps.storage, &lp_token)?
         .ok_or(ContractError::LPNotWhitelisted {})?;
@@ -162,7 +160,6 @@ fn execute_lock_lp(
         return Err(ContractError::LPNotWhitelisted {});
     }
 
-    // Validate unlock time
     let current_time = env.block.time.seconds();
     let lock_duration =
         unlock_time
@@ -179,10 +176,7 @@ fn execute_lock_lp(
         });
     }
 
-    // Create locker
     let mut config = CONFIG.load(deps.storage)?;
-
-    // Calculate and deduct platform fee (on lock)
     let mut messages: Vec<WasmMsg> = vec![];
     let mut lock_amount = amount;
     if config.platform_fee_bps > 0 {
@@ -221,12 +215,10 @@ fn execute_lock_lp(
     LOCKERS.save(deps.storage, locker_id, &locker)?;
     USER_LOCKERS.save(deps.storage, (&sender, locker_id), &true)?;
 
-    // Update total locked
     TOTAL_LOCKED.update(deps.storage, &lp_token, |total| -> StdResult<_> {
         Ok(total.unwrap_or_default().checked_add(lock_amount)?)
     })?;
 
-    // Update whitelist statistics
     whitelist.total_locked_all_time = whitelist
         .total_locked_all_time
         .checked_add(lock_amount)
@@ -237,7 +229,6 @@ fn execute_lock_lp(
     }
     WHITELISTED_LPS.save(deps.storage, &lp_token, &whitelist)?;
 
-    // Notify reward controller
     if let Some(reward_controller) = config.reward_controller {
         messages.push(WasmMsg::Execute {
             contract_addr: reward_controller.to_string(),
@@ -294,34 +285,28 @@ fn execute_unlock_lp(
     let locker = LOCKERS.load(deps.storage, locker_id)?;
     let config = CONFIG.load(deps.storage)?;
 
-    // Verify owner
     if locker.owner != info.sender {
         return Err(ContractError::NotOwner {});
     }
 
-    // Check unlock time (NOT affected by pause)
     let current_time = env.block.time.seconds();
     if current_time < locker.unlock_time {
         return Err(ContractError::StillLocked(locker.unlock_time));
     }
 
-    // Remove locker
     LOCKERS.remove(deps.storage, locker_id);
     USER_LOCKERS.remove(deps.storage, (&locker.owner, locker_id));
 
-    // Update total locked
     TOTAL_LOCKED.update(deps.storage, &locker.lp_token, |total| -> StdResult<_> {
         Ok(total.unwrap_or_default().checked_sub(locker.amount)?)
     })?;
 
-    // Update whitelist statistics
     WHITELISTED_LPS.update(deps.storage, &locker.lp_token, |wl| -> StdResult<_> {
         let mut wl = wl.ok_or(cosmwasm_std::StdError::generic_err("Whitelist not found"))?;
         wl.total_unlocked_all_time = wl.total_unlocked_all_time.checked_add(locker.amount)?;
         Ok(wl)
     })?;
 
-    // Calculate and deduct platform fee (on unlock)
     let mut messages: Vec<WasmMsg> = vec![];
     let mut return_amount = locker.amount;
 
@@ -345,7 +330,6 @@ fn execute_unlock_lp(
         }
     }
 
-    // Transfer LP tokens back
     messages.push(WasmMsg::Execute {
         contract_addr: locker.lp_token.to_string(),
         msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
@@ -355,7 +339,6 @@ fn execute_unlock_lp(
         funds: vec![],
     });
 
-    // Notify reward controller
     if let Some(reward_controller) = config.reward_controller {
         messages.push(WasmMsg::Execute {
             contract_addr: reward_controller.to_string(),
@@ -420,7 +403,6 @@ fn execute_extend_lock(
         return Err(ContractError::InvalidExtension {});
     }
 
-    // Validate against whitelist
     let whitelist = WHITELISTED_LPS.load(deps.storage, &locker.lp_token)?;
     let current_time = env.block.time.seconds();
     let new_duration = new_unlock_time.saturating_sub(current_time);
@@ -503,16 +485,13 @@ fn execute_emergency_unlock(
         return Err(ContractError::EmergencyDelayNotPassed(execute_at));
     }
 
-    // Remove locker
     LOCKERS.remove(deps.storage, locker_id);
     USER_LOCKERS.remove(deps.storage, (&locker.owner, locker_id));
 
-    // Update total locked
     TOTAL_LOCKED.update(deps.storage, &locker.lp_token, |total| -> StdResult<_> {
         Ok(total.unwrap_or_default().checked_sub(locker.amount)?)
     })?;
 
-    // Calculate and deduct platform fee
     let config = CONFIG.load(deps.storage)?;
     let mut messages: Vec<WasmMsg> = vec![];
     let mut return_amount = locker.amount;
@@ -537,7 +516,6 @@ fn execute_emergency_unlock(
         }
     }
 
-    // Transfer LP tokens back
     messages.push(WasmMsg::Execute {
         contract_addr: locker.lp_token.to_string(),
         msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
@@ -547,7 +525,6 @@ fn execute_emergency_unlock(
         funds: vec![],
     });
 
-    // Notify reward controller
     if let Some(reward_controller) = config.reward_controller {
         messages.push(WasmMsg::Execute {
             contract_addr: reward_controller.to_string(),
@@ -804,7 +781,8 @@ fn query_all_whitelisted_lps(
 ) -> StdResult<Vec<WhitelistedLPResponse>> {
     let limit = limit.unwrap_or(10).min(30) as usize;
     let start_addr = start_after
-        .map(|s| deps.api.addr_validate(&s))
+        .as_ref()
+        .map(|s| deps.api.addr_validate(s))
         .transpose()?;
     let start = start_addr.as_ref().map(Bound::exclusive);
 

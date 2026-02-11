@@ -71,6 +71,9 @@ for contract in "${CONTRACTS[@]}"; do
     
     cd "contracts/$contract"
     
+    # Clean previous builds
+    cargo clean --quiet
+
     # Step 1: Run tests
     echo -e "${CYAN}[1/4] Running tests...${NC}"
     if cargo test --quiet; then
@@ -92,8 +95,9 @@ for contract in "${CONTRACTS[@]}"; do
     
     # Step 2: Compile to WASM
     echo -e "${CYAN}[2/4] Compiling to WASM...${NC}"
-    # Disable bulk-memory to ensure compatibility with Paxi Network's wasmd v0.55.0
-    RUSTFLAGS='-C link-arg=-s -C target-feature=-bulk-memory' cargo build --release --target wasm32-unknown-unknown --quiet
+    # Target MVP CPU and disable extensions to ensure compatibility with Paxi Network
+    export RUSTFLAGS="-C target-cpu=mvp -C target-feature=-bulk-memory,-mutable-globals,-sign-ext,-nontrapping-fptoint -C link-arg=-s"
+    cargo build --release --target wasm32-unknown-unknown --quiet
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ Compilation successful${NC}"
     else
@@ -105,7 +109,8 @@ for contract in "${CONTRACTS[@]}"; do
     # Step 3: Optimize with wasm-opt
     if [ -z "$SKIP_OPT" ]; then
         echo -e "${CYAN}[3/4] Optimizing with wasm-opt...${NC}"
-        wasm-opt -Oz --enable-sign-ext \
+        # Use strictly MVP features for maximum compatibility
+        wasm-opt -Oz --mvp-features \
             "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" \
             -o "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm"
         

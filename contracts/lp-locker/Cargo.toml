@@ -11,7 +11,7 @@ repository = "https://github.com/paxi-network/lp-platform"
 crate-type = ["cdylib", "rlib"]
 
 [profile.release]
-opt-level = 3
+opt-level = 'z'
 debug = false
 rpath = false
 lto = true
