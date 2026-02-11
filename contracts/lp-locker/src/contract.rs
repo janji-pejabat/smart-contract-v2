@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, WasmMsg, Addr, Decimal,
+    entry_point, to_json_binary, Addr, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
+    StdResult, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
@@ -528,7 +528,7 @@ fn query_lockers_by_owner(
 ) -> StdResult<LockersResponse> {
     let owner_addr = deps.api.addr_validate(&owner)?;
     let limit = limit.unwrap_or(10).min(30) as usize;
-    let start = start_after.map(|id| Bound::exclusive((&owner_addr, id)));
+    let start = start_after.map(Bound::exclusive);
 
     let lockers: Vec<LockerResponse> = USER_LOCKERS
         .prefix(&owner_addr)
@@ -575,9 +575,11 @@ fn query_all_whitelisted_lps(
     limit: Option<u32>,
 ) -> StdResult<Vec<WhitelistedLPResponse>> {
     let limit = limit.unwrap_or(10).min(30) as usize;
-    let start = start_after.as_ref().map(|s| {
-        deps.api.addr_validate(s).map(|addr| Bound::exclusive(&addr))
-    }).transpose()?;
+    let start_addr = start_after
+        .as_ref()
+        .map(|s| deps.api.addr_validate(s))
+        .transpose()?;
+    let start = start_addr.as_ref().map(Bound::exclusive);
 
     WHITELISTED_LPS
         .range(deps.storage, start, None, cosmwasm_std::Order::Ascending)

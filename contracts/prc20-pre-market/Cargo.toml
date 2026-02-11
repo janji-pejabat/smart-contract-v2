@@ -1,0 +1,38 @@
+[package]
+name = "prc20-pre-market"
+version = "1.0.0"
+authors = ["Paxi Network <dev@paxi.network>"]
+edition = "2021"
+description = "Professional PRC20 Pre-Market Smart Contract for Paxi Network"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true
+
+[features]
+default = []
+library = []
+
+[dependencies]
+cosmwasm-std = "1.5"
+cosmwasm-schema = "1.5"
+cw-storage-plus = "1.2"
+cw2 = "1.1"
+cw20 = "1.1"
+schemars = "0.8"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+thiserror = "1.0"
+
+[dev-dependencies]
+cw-multi-test = "0.20"
