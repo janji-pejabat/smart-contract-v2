@@ -2,9 +2,9 @@
 mod tests {
     use crate::contract::{execute, instantiate, query};
     use crate::msg::{Cw20HookMsg, ExecuteMsg, InstantiateMsg, QueryMsg, RoundConfig};
-    use crate::state::{Config, Listing, ListingStatus, Purchase};
+    use crate::state::{Config, Listing, ListingStatus};
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{from_json, to_json_binary, Addr, Uint128, BankMsg};
+    use cosmwasm_std::{from_json, to_json_binary, Addr, Uint128};
     use cw20::Cw20ReceiveMsg;
 
     fn setup_contract(deps: cosmwasm_std::DepsMut) {

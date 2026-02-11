@@ -15,6 +15,10 @@ codegen-units = 1
 panic = 'abort'
 overflow-checks = true
 
+[features]
+default = []
+library = []
+
 [dependencies]
 cosmwasm-std = "1.5"
 cosmwasm-schema = "1.5"

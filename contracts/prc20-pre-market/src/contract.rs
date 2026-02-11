@@ -176,7 +176,7 @@ pub fn execute_buy(
 
     // Calculate fees
     let platform_fee = total_paxi.multiply_ratio(config.platform_fee_bps, 10000u64);
-    let royalty_fee = if let Some(_) = &listing.royalty_address {
+    let royalty_fee = if listing.royalty_address.is_some() {
         total_paxi.multiply_ratio(listing.royalty_bps, 10000u64)
     } else {
         Uint128::zero()
@@ -348,6 +348,7 @@ pub fn execute_receive(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn execute_create_listing(
     deps: DepsMut,
     info: MessageInfo,

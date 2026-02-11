@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "contracts/lp-locker",
+    "contracts/reward-controller",
+    "contracts/prc20-pre-market",
+]
+resolver = "2"
