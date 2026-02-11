@@ -98,6 +98,7 @@ pub fn execute(
 }
 
 // Admin Handlers
+#[allow(clippy::too_many_arguments)]
 fn execute_create_room(
     deps: DepsMut,
     env: Env,
@@ -457,7 +458,7 @@ fn execute_stake(
     user_pos.nft_multiplier = query_nft_multiplier(deps.as_ref(), &user_addr, &room)?;
 
     // Add stake
-    if let Some(pos) = user_pos.staked_amounts.iter_mut().find(|(t, _)| t == &stake_token) {
+    if let Some(pos) = user_pos.staked_amounts.iter_mut().find(|(t, _)| t == stake_token) {
         pos.1 = pos.1.checked_add(amount)?;
     } else {
         user_pos.staked_amounts.push((stake_token, amount));
@@ -522,7 +523,7 @@ fn execute_unstake(
         return Err(ContractError::CooldownNotElapsed {});
     }
 
-    let pos_idx = user_pos.staked_amounts.iter().position(|(t, _)| t == &stake_token)
+    let pos_idx = user_pos.staked_amounts.iter().position(|(t, _)| t == stake_token)
         .ok_or(ContractError::InvalidStakeToken {})?;
 
     if user_pos.staked_amounts[pos_idx].1 < amount {

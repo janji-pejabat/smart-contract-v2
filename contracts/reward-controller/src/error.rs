@@ -35,4 +35,7 @@ pub enum ContractError {
 
     #[error("Insufficient reward balance")]
     InsufficientRewards {},
+
+    #[error("Overflow")]
+    Overflow { #[from] source: cosmwasm_std::OverflowError },
 }

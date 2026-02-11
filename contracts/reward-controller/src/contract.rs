@@ -458,7 +458,7 @@ fn query_all_pools(
     limit: Option<u32>,
 ) -> StdResult<Vec<RewardPoolResponse>> {
     let limit = limit.unwrap_or(10).min(30) as usize;
-    let start = start_after.map(|id| cw_storage_plus::Bound::exclusive(id));
+    let start = start_after.map(cw_storage_plus::Bound::exclusive);
 
     POOLS
         .range(deps.storage, start, None, cosmwasm_std::Order::Ascending)

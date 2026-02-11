@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Deps, DepsMut, Env, MessageInfo,
+    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo,
     Response, StdResult, Uint128, WasmMsg, Addr, Decimal,
 };
 use cw2::set_contract_version;
@@ -268,7 +268,7 @@ fn execute_extend_lock(
     // Validate against whitelist
     let whitelist = WHITELISTED_LPS.load(deps.storage, &locker.lp_token)?;
     let current_time = env.block.time.seconds();
-    let new_duration = new_unlock_time.checked_sub(current_time).unwrap_or(0);
+    let new_duration = new_unlock_time.saturating_sub(current_time);
 
     if new_duration > whitelist.max_lock_duration {
         return Err(ContractError::InvalidUnlockTime {
@@ -528,7 +528,7 @@ fn query_lockers_by_owner(
 ) -> StdResult<LockersResponse> {
     let owner_addr = deps.api.addr_validate(&owner)?;
     let limit = limit.unwrap_or(10).min(30) as usize;
-    let start = start_after.map(|id| Bound::exclusive((&owner_addr, id)));
+    let start = start_after.map(Bound::exclusive);
 
     let lockers: Vec<LockerResponse> = USER_LOCKERS
         .prefix(&owner_addr)
@@ -575,9 +575,8 @@ fn query_all_whitelisted_lps(
     limit: Option<u32>,
 ) -> StdResult<Vec<WhitelistedLPResponse>> {
     let limit = limit.unwrap_or(10).min(30) as usize;
-    let start = start_after.as_ref().map(|s| {
-        deps.api.addr_validate(s).map(|addr| Bound::exclusive(&addr))
-    }).transpose()?;
+    let start_addr = start_after.map(|s| deps.api.addr_validate(&s)).transpose()?;
+    let start = start_addr.as_ref().map(Bound::exclusive);
 
     WHITELISTED_LPS
         .range(deps.storage, start, None, cosmwasm_std::Order::Ascending)
