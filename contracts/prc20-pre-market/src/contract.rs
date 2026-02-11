@@ -8,8 +8,8 @@ use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use crate::error::ContractError;
 use crate::msg::{Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, RoundConfig};
 use crate::state::{
-    listings, Config, GlobalStats, Listing, ListingStatus, Purchase, Round, CONFIG, NEXT_LISTING_ID,
-    NEXT_PURCHASE_ID, STATS, TOKEN_BLACKLIST, USER_PURCHASES, USER_TOTAL_BOUGHT,
+    listings, Config, GlobalStats, Listing, ListingStatus, Purchase, Round, CONFIG,
+    NEXT_LISTING_ID, NEXT_PURCHASE_ID, STATS, TOKEN_BLACKLIST, USER_PURCHASES, USER_TOTAL_BOUGHT,
 };
 
 const CONTRACT_NAME: &str = "crates.io:prc20-pre-market";
@@ -114,9 +114,13 @@ pub fn execute_buy(
     let current_time = env.block.time.seconds();
 
     // Find active round
-    let round = listing.rounds.iter().find(|r| {
-        current_time >= r.start_time && current_time <= r.end_time
-    }).ok_or_else(|| ContractError::Std(cosmwasm_std::StdError::generic_err("No active round found")))?;
+    let round = listing
+        .rounds
+        .iter()
+        .find(|r| current_time >= r.start_time && current_time <= r.end_time)
+        .ok_or_else(|| {
+            ContractError::Std(cosmwasm_std::StdError::generic_err("No active round found"))
+        })?;
 
     if let Some(limit) = round.max_wallet_limit {
         let already_bought = USER_TOTAL_BOUGHT
@@ -655,7 +659,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     }
 }
 
-fn query_listings(deps: Deps, start_after: Option<u64>, limit: Option<u32>) -> StdResult<Vec<Listing>> {
+fn query_listings(
+    deps: Deps,
+    start_after: Option<u64>,
+    limit: Option<u32>,
+) -> StdResult<Vec<Listing>> {
     let limit = limit.unwrap_or(10).min(30) as usize;
     let start = start_after.map(cw_storage_plus::Bound::exclusive);
 

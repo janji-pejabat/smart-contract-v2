@@ -5,3 +5,17 @@ members = [
     "contracts/prc20-pre-market",
 ]
 resolver = "2"
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("library"))'] }

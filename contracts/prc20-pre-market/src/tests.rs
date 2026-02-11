@@ -126,35 +126,95 @@ mod tests {
         // 1. Try buying before rounds start
         let mut env = mock_env();
         env.block.time = cosmwasm_std::Timestamp::from_seconds(50);
-        let msg = ExecuteMsg::Buy { listing_id: 1, amount: Uint128::from(10u128), referrer: None };
+        let msg = ExecuteMsg::Buy {
+            listing_id: 1,
+            amount: Uint128::from(10u128),
+            referrer: None,
+        };
         let err = execute(deps.as_mut(), env.clone(), mock_info("buyer1", &[]), msg).unwrap_err();
         assert!(err.to_string().contains("No active round found"));
 
         // 2. Buy in Private Round (buyer1 is whitelisted)
         env.block.time = cosmwasm_std::Timestamp::from_seconds(150);
-        let info = mock_info("buyer1", &[cosmwasm_std::Coin { denom: "upaxi".to_string(), amount: Uint128::from(100u128) }]);
-        let msg = ExecuteMsg::Buy { listing_id: 1, amount: Uint128::from(10u128), referrer: None };
+        let info = mock_info(
+            "buyer1",
+            &[cosmwasm_std::Coin {
+                denom: "upaxi".to_string(),
+                amount: Uint128::from(100u128),
+            }],
+        );
+        let msg = ExecuteMsg::Buy {
+            listing_id: 1,
+            amount: Uint128::from(10u128),
+            referrer: None,
+        };
         let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
-        assert_eq!(res.attributes.iter().find(|a| a.key == "round").unwrap().value, "Private");
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "round")
+                .unwrap()
+                .value,
+            "Private"
+        );
 
         // 3. Try buying in Private Round as non-whitelisted
-        let info2 = mock_info("buyer2", &[cosmwasm_std::Coin { denom: "upaxi".to_string(), amount: Uint128::from(100u128) }]);
-        let msg2 = ExecuteMsg::Buy { listing_id: 1, amount: Uint128::from(10u128), referrer: None };
+        let info2 = mock_info(
+            "buyer2",
+            &[cosmwasm_std::Coin {
+                denom: "upaxi".to_string(),
+                amount: Uint128::from(100u128),
+            }],
+        );
+        let msg2 = ExecuteMsg::Buy {
+            listing_id: 1,
+            amount: Uint128::from(10u128),
+            referrer: None,
+        };
         let err = execute(deps.as_mut(), env.clone(), info2, msg2).unwrap_err();
         assert!(err.to_string().contains("Not on whitelist"));
 
         // 4. Try exceeding wallet limit in Private Round
-        let info3 = mock_info("buyer1", &[cosmwasm_std::Coin { denom: "upaxi".to_string(), amount: Uint128::from(1000u128) }]);
-        let msg3 = ExecuteMsg::Buy { listing_id: 1, amount: Uint128::from(41u128), referrer: None }; // Total 10 + 41 = 51 > 50
+        let info3 = mock_info(
+            "buyer1",
+            &[cosmwasm_std::Coin {
+                denom: "upaxi".to_string(),
+                amount: Uint128::from(1000u128),
+            }],
+        );
+        let msg3 = ExecuteMsg::Buy {
+            listing_id: 1,
+            amount: Uint128::from(41u128),
+            referrer: None,
+        }; // Total 10 + 41 = 51 > 50
         let err = execute(deps.as_mut(), env.clone(), info3, msg3).unwrap_err();
-        assert!(err.to_string().contains("Wallet limit exceeded for this round"));
+        assert!(err
+            .to_string()
+            .contains("Wallet limit exceeded for this round"));
 
         // 5. Buy in Public Round (price is higher)
         env.block.time = cosmwasm_std::Timestamp::from_seconds(300);
-        let info4 = mock_info("buyer2", &[cosmwasm_std::Coin { denom: "upaxi".to_string(), amount: Uint128::from(200u128) }]);
-        let msg4 = ExecuteMsg::Buy { listing_id: 1, amount: Uint128::from(10u128), referrer: None }; // 10 * 20 = 200
+        let info4 = mock_info(
+            "buyer2",
+            &[cosmwasm_std::Coin {
+                denom: "upaxi".to_string(),
+                amount: Uint128::from(200u128),
+            }],
+        );
+        let msg4 = ExecuteMsg::Buy {
+            listing_id: 1,
+            amount: Uint128::from(10u128),
+            referrer: None,
+        }; // 10 * 20 = 200
         let res = execute(deps.as_mut(), env.clone(), info4, msg4).unwrap();
-        assert_eq!(res.attributes.iter().find(|a| a.key == "round").unwrap().value, "Public");
+        assert_eq!(
+            res.attributes
+                .iter()
+                .find(|a| a.key == "round")
+                .unwrap()
+                .value,
+            "Public"
+        );
     }
 
     #[test]

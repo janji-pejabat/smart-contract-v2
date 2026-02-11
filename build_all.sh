@@ -106,7 +106,7 @@ for contract in "${CONTRACTS[@]}"; do
 
     if [ -z "$SKIP_OPT" ]; then
         echo -e "${CYAN}[3/4] Optimizing with wasm-opt...${NC}"
-        wasm-opt -Oz --enable-sign-ext \
+        wasm-opt -Oz --enable-sign-ext --enable-bulk-memory \
             "$WASM_PATH" \
             -o "${WASM_PATH%.wasm}_optimized.wasm"
         
