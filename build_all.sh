@@ -115,8 +115,8 @@ for contract in "${CONTRACTS[@]}"; do
         # --all-features allows wasm-opt to read the input even if it contains non-MVP opcodes.
         wasm-opt -Oz \
             --all-features \
-            --signext-lowering \
-            --bulkmemory-lowering \
+            --lower-sign-ext \
+            --lower-bulk-memory \
             --strip-debug \
             "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" \
             -o "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm"
