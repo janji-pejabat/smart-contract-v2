@@ -1,107 +1,111 @@
-# PRC20 Token Vesting - User Guide
+# PRC20 Token Vesting - Technical Documentation & User Guide
 
-The **PRC20 Token Vesting** contract is a production-grade system designed to manage the gradual release of PRC20 (CW20-compatible) tokens. It supports multiple vesting models, administrative controls, and efficient batch operations.
+The **PRC20 Token Vesting** contract is a secure, production-grade system for managing the phased release of PRC20 (CW20-compatible) tokens. This guide provides a comprehensive overview of features, implementation examples, and technical logic.
 
 ## Table of Contents
-1. [Vesting Models](#vesting-models)
-2. [Contract Deployment](#contract-deployment)
-3. [Core Operations](#core-operations)
-   - [Creating a Vesting Schedule](#creating-a-vesting-schedule)
-   - [Batch Creation](#batch-creation)
-   - [Claiming Tokens](#claiming-tokens)
-   - [Revoking Vesting](#revoking-vesting)
-4. [Administrative Functions](#administrative-functions)
-5. [Querying State](#querying-state)
-6. [Technical Details](#technical-details)
+1. [Core Features](#core-features)
+2. [Vesting Models & JSON Examples](#vesting-models--json-examples)
+3. [Contract Lifecycle & Execution](#contract-lifecycle--execution)
+4. [Querying State](#querying-state)
+5. [Important Validations & Behaviors](#important-validations--behaviors)
+6. [Technical Math Definitions](#technical-math-definitions)
 
 ---
 
-## Vesting Models
+## Core Features
 
-The contract supports two primary types of vesting schedules:
-
-### 1. Linear Vesting (with optional Cliff)
-Tokens are released continuously over a specified duration.
-- **Start Time**: When the vesting period begins.
-- **End Time**: When all tokens are fully vested.
-- **Cliff Time (Optional)**: A specific point in time before which no tokens are released. At the cliff, all tokens that would have vested linearly since the start are unlocked at once.
-- **Release Interval**: The frequency (in seconds) at which tokens are unlocked. Set to `1` for per-second continuous vesting.
-
-### 2. Custom Milestones
-Tokens are released at specific, pre-defined timestamps.
-- **Milestones**: A list of `(timestamp, amount)` pairs.
-- Useful for one-time unlocks or complex non-linear schedules.
+- **Standardized PRC20 Support**: Works with any CW20-compliant token.
+- **Time-Based Logic**: Uses `env.block.time` for deterministic unlocks (resistant to block height variations).
+- **Multiple Release Strategies**: Support for continuous linear release, cliffs, and custom milestones.
+- **Custodial Security**: Tokens are held in escrow by the contract until claimed by the beneficiary.
+- **Batch Processing**: Gas-efficient batch creation and multi-position claiming.
+- **Administrative Oversight**: Optional revocation for specific positions and emergency pause functionality.
+- **Secondary Indexing**: Efficient lookups by beneficiary address or category.
 
 ---
 
-## Contract Deployment
+## Vesting Models & JSON Examples
 
-### Instantiation
-To deploy the contract, you must provide the admin address.
+### 1. Pure Linear Vesting
+Tokens unlock smoothly every second (or according to interval) from start to end.
 
-**Message:**
 ```json
 {
-  "admin": "paxi1..."
-}
-```
-
----
-
-## Core Operations
-
-### Creating a Vesting Schedule
-To create a vesting schedule, tokens MUST be transferred to the vesting contract using the CW20 `send` method. The vesting contract will process the `Receive` hook.
-
-**CW20 Send Payload:**
-```json
-{
-  "send": {
-    "contract": "<VESTING_CONTRACT_ADDR>",
-    "amount": "1000000000",
-    "msg": "<BASE64_ENCODED_HOOK_MSG>"
+  "linear": {
+    "start_time": 1700000000,
+    "end_time": 1731536000,
+    "release_interval": 1
   }
 }
 ```
 
-**Hook Message (`msg` before encoding):**
+### 2. Cliff + Linear Vesting
+No tokens are released until the `cliff_time`. At the cliff, the accumulated amount from `start_time` is released immediately, followed by linear vesting until `end_time`.
+
+```json
+{
+  "linear": {
+    "start_time": 1700000000,
+    "end_time": 1731536000,
+    "cliff_time": 1715768000,
+    "release_interval": 3600
+  }
+}
+```
+*Note: `release_interval` of 3600 means tokens unlock in hourly chunks.*
+
+### 3. Custom Milestones (Step Vesting)
+Tokens unlock in discrete amounts at specific timestamps.
+
+```json
+{
+  "custom": {
+    "milestones": [
+      { "timestamp": 1700000000, "amount": "200000000" },
+      { "timestamp": 1710000000, "amount": "300000000" },
+      { "timestamp": 1720000000, "amount": "500000000" }
+    ]
+  }
+}
+```
+*Constraint: The sum of milestone amounts MUST exactly match the total tokens sent in the creation transaction.*
+
+---
+
+## Contract Lifecycle & Execution
+
+### 1. Creation (via CW20 Send)
+You cannot create a vesting by calling the contract directly. You must use the token's `send` method.
+
+**Example: Creating a single vesting**
 ```json
 {
   "create_vesting": {
-    "beneficiary": "paxi1_beneficiary...",
+    "beneficiary": "paxi1...",
     "category": "team",
     "revocable": true,
-    "schedule": {
-      "linear": {
-        "start_time": 1700000000,
-        "end_time": 1731536000,
-        "cliff_time": 1715768000,
-        "release_interval": 1
-      }
-    }
+    "schedule": { "linear": { ... } }
   }
 }
 ```
 
-### Batch Creation
-You can create multiple vesting schedules for different beneficiaries in a single CW20 transfer. The total amount transferred must match the sum of all individual vesting amounts.
-
-**Hook Message (`msg` before encoding):**
+**Example: Batch creating vestings**
+Total amount sent must be "1500".
 ```json
 {
   "batch_create_vesting": {
     "vestings": [
       {
-        "beneficiary": "paxi1_user1...",
-        "amount": "500000000",
+        "beneficiary": "paxi1_user_a...",
+        "amount": "1000",
         "category": "seed",
         "revocable": false,
         "schedule": { ... }
       },
       {
-        "beneficiary": "paxi1_user2...",
-        "amount": "500000000",
-        "category": "advisor",
+        "beneficiary": "paxi1_user_b...",
+        "amount": "500",
+        "category": "seed",
         "revocable": true,
         "schedule": { ... }
       }
@@ -110,26 +114,20 @@ You can create multiple vesting schedules for different beneficiaries in a singl
 }
 ```
 
-### Claiming Tokens
-Beneficiaries (or anyone on their behalf) can claim vested tokens at any time.
+### 2. Claiming Tokens
+Beneficiaries claim their available tokens.
 
-**Message:**
 ```json
 {
   "claim": {
-    "ids": [1, 5, 12]
+    "ids": [1, 2, 15]
   }
 }
 ```
-*Tokens are always sent to the registered beneficiary address of the vesting position.*
 
-### Revoking Vesting
-Admins can revoke positions marked as `revocable`.
-- **Vested tokens** remain in the contract and are claimable by the beneficiary.
-- **Unvested tokens** are immediately returned to the admin.
-- Once revoked, the total amount of the vesting is adjusted to the vested amount, and the schedule is frozen.
+### 3. Revoking (Admin Only)
+Only positions created with `revocable: true` can be revoked.
 
-**Message:**
 ```json
 {
   "revoke": {
@@ -138,77 +136,101 @@ Admins can revoke positions marked as `revocable`.
 }
 ```
 
----
-
-## Administrative Functions
-
-### Update Admin
-Change the contract administrator.
+### 4. Governance & Maintenance
 ```json
-{
-  "update_admin": {
-    "admin": "paxi1_new_admin..."
-  }
-}
-```
+// Transfer admin rights
+{ "update_admin": { "admin": "paxi1..." } }
 
-### Pause / Unpause
-Pause all state-changing operations (except claiming, which remains active to ensure trust).
-```json
-{
-  "set_paused": {
-    "paused": true
-  }
-}
+// Emergency Pause
+{ "set_paused": { "paused": true } }
 ```
 
 ---
 
 ## Querying State
 
-### Get Vesting Details
+### Config
+Returns admin address and pause status.
+```json
+{ "config": {} }
+```
+
+### Single Vesting Details
+Returns full details including claimable amount.
 ```json
 { "vesting": { "id": 1 } }
 ```
 
-### List by Beneficiary
+### Claimable Amount Only
+Returns just the `Uint128` amount available for claiming.
+```json
+{ "claimable_amount": { "id": 1 } }
+```
+
+### List by Beneficiary / Category
+Supports pagination via `start_after` (last ID seen) and `limit`.
 ```json
 {
   "vestings_by_beneficiary": {
     "beneficiary": "paxi1...",
-    "start_after": 0,
+    "start_after": 5,
     "limit": 10
   }
 }
 ```
 
-### Check Claimable Amount
-```json
-{ "claimable_amount": { "id": 1 } }
-```
-
 ### Global Statistics
-Get total vested and claimed amounts for a specific token address.
+Aggregated data for a specific token address.
 ```json
 {
   "global_stats": {
-    "token_address": "paxi1_token_contract..."
+    "token_address": "paxi1_token..."
   }
 }
 ```
 
 ---
 
-## Technical Details
+## Important Validations & Behaviors
 
-### Linear Vesting Formula
-$Vested = Total \times \frac{CurrentTime - StartTime}{EndTime - StartTime}$
+### 1. Milestone Integrity
+When using the `Custom` schedule, the contract enforces:
+- **Order**: Milestones must be provided in ascending order of timestamp.
+- **Matching**: The sum of `amount` in the milestone list must be **exactly equal** to the `amount` of tokens deposited for that position. If they don't match, the transaction reverts.
 
-*Notes:*
-- If `CurrentTime < CliffTime`, $Vested = 0$.
-- If `ReleaseInterval > 1`, the time is rounded down to the nearest interval: $EffectiveElapsed = \lfloor \frac{Elapsed}{Interval} \rfloor \times Interval$.
+### 2. Pause Mechanism
+When the contract is **Paused**:
+- **Blocked**: All state-changing operations including `Receive` (creation), `Claim`, `Revoke`, and `UpdateAdmin`.
+- **Allowed**: All Queries.
+*Note: The admin can still unpause the contract using `set_paused: { paused: false }`.*
 
-### Security Measures
-- **Check-Effect-Interaction**: State is updated before tokens are transferred.
-- **Overflow Protection**: Uses `Uint128` with `multiply_ratio` for high-precision math without overflow.
-- **Revocation Freeze**: Revocation uses a `Custom` schedule with a single milestone to ensure no further vesting occurs while preserving the beneficiary's right to claim what they already earned.
+### 3. Revocation Freeze
+When an admin revokes a vesting position:
+1.  The contract calculates the `vested_amount` at that exact second.
+2.  The `unvested_amount` (Total - Vested) is transferred back to the admin.
+3.  The vesting position's `total_amount` is updated to the `vested_amount`.
+4.  The `schedule` is replaced with a `Custom` schedule containing a single milestone at the current time.
+5.  **Result**: No more tokens will ever vest for this position, but the beneficiary can still claim any `vested_but_unclaimed` tokens at their convenience.
+
+---
+
+## Technical Math Definitions
+
+### Calculation of "Vested" Amount
+
+**For Linear Schedules**:
+1.  **If `CurrentTime < CliffTime`** (or `StartTime` if no cliff): Vested = 0.
+2.  **If `CurrentTime >= EndTime`**: Vested = Total.
+3.  **Otherwise**:
+    - $Elapsed = CurrentTime - StartTime$
+    - $Duration = EndTime - StartTime$
+    - $EffectiveElapsed = \lfloor \frac{Elapsed}{Interval} \rfloor \times Interval$
+    - $Vested = Total \times \frac{EffectiveElapsed}{Duration}$
+
+**For Custom Schedules**:
+- $Vested = \sum MilestoneAmounts$ where $MilestoneTimestamp \le CurrentTime$.
+
+### Calculation of "Claimable" Amount
+The amount a user actually receives when calling `Claim` is:
+$Claimable = VestedAmount - ReleasedAmount$
+where `ReleasedAmount` is the sum of all tokens already successfully claimed from that position.

@@ -152,7 +152,7 @@ fn batch_create_vesting(
     vestings: Vec<VestingCreation>,
 ) -> Result<Response, ContractError> {
     let mut sum = Uint128::zero();
-    let mut responses = vec![];
+    let mut count = 0u64;
     let mut id_count = VESTING_COUNT.load(deps.storage)?;
     let mut stats = GLOBAL_STATS
         .may_load(deps.storage, &token_address)?
@@ -184,8 +184,7 @@ fn batch_create_vesting(
         BENEFICIARY_VESTINGS.save(deps.storage, (&beneficiary_addr, id_count), &true)?;
         CATEGORY_VESTINGS.save(deps.storage, (&v.category, id_count), &true)?;
         stats.total_vested += v.amount;
-
-        responses.push(format!("{}:{}", beneficiary_addr, v.amount));
+        count += 1;
     }
 
     if sum != total_amount {
@@ -202,12 +201,9 @@ fn batch_create_vesting(
 
     Ok(Response::new()
         .add_attribute("action", "batch_create_vesting")
-        .add_attribute("count", responses.len().to_string())
+        .add_attribute("count", count.to_string())
         .add_attribute("total_amount", total_amount)
-        .add_attribute(
-            "first_id",
-            (id_count - responses.len() as u64 + 1).to_string(),
-        )
+        .add_attribute("first_id", (id_count - count + 1).to_string())
         .add_attribute("last_id", id_count.to_string()))
 }
 
