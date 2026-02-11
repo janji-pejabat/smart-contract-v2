@@ -1,9 +1,10 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Addr, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult, Uint128, WasmMsg,
+    entry_point, from_json, to_json_binary, Addr, Binary, Decimal, Deps, DepsMut, Env, MessageInfo,
+    Response, StdResult, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
+use cw_storage_plus::Bound;
 
 use crate::error::ContractError;
 use crate::msg::{
@@ -866,7 +867,3 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
         }
     }
 }
-
-// Helper function
-use cosmwasm_std::from_json;
-use cw_storage_plus::Bound;
