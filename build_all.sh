@@ -10,7 +10,9 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-clear
+if [ -t 1 ] && [ -n "$TERM" ]; then
+    clear
+fi
 echo -e "${GREEN}=========================================="
 echo "  LP PLATFORM v2.0.0 - BUILD SUITE"
 echo "  Locker + Reward Controller"
@@ -73,9 +75,14 @@ for contract in "${CONTRACTS[@]}"; do
     if cargo test --quiet; then
         echo -e "${GREEN}✓ Tests passed${NC}"
     else
-        echo -e "${YELLOW}⚠ Some tests failed - continue anyway? (y/n)${NC}"
-        read -r response
-        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+        if [ -t 0 ]; then
+            echo -e "${YELLOW}⚠ Some tests failed - continue anyway? (y/n)${NC}"
+            read -r response
+            if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+        else
+            echo -e "${RED}✗ Tests failed!${NC}"
             exit 1
         fi
     fi
