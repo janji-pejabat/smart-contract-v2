@@ -2,6 +2,8 @@
 
 A professional, production-grade token vesting system for PRC20 (CW20-compatible) tokens.
 
+[View Full User Guide](../../docs/prc20-vesting.md)
+
 ## Features
 
 - **Multiple Vesting Models**:
