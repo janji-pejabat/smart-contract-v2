@@ -11,13 +11,6 @@ crate-type = ["cdylib", "rlib"]
 default = []
 library = []
 
-[profile.release]
-opt-level = 3
-debug = false
-lto = true
-codegen-units = 1
-panic = 'abort'
-overflow-checks = true
 
 [dependencies]
 cosmwasm-std = "1.5"

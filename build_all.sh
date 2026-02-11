@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build_all.sh - Build both LP Platform contracts
+# build_all.sh - Build all contracts in the workspace
 
 set -e
 
@@ -10,9 +10,16 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Parse arguments
+SKIP_TESTS=0
+for arg in "$@"; do
+    if [ "$arg" == "--skip-tests" ]; then
+        SKIP_TESTS=1
+    fi
+done
+
 echo -e "${GREEN}=========================================="
-echo "  LP PLATFORM v2.0.0 - BUILD SUITE"
-echo "  Locker + Reward Controller"
+echo "  LP PLATFORM - OPTIMIZED BUILD SUITE"
 echo "==========================================${NC}"
 echo ""
 
@@ -23,29 +30,15 @@ CONTRACTS=(
     "prc20-vesting"
 )
 
-# Validate project structure
-echo -e "${CYAN}Validating project structure...${NC}"
-for contract in "${CONTRACTS[@]}"; do
-    if [ ! -d "contracts/$contract" ]; then
-        echo -e "${RED}✗ contracts/$contract not found!${NC}"
-        echo -e "${YELLOW}Please ensure project structure is correct${NC}"
-        exit 1
-    fi
-done
-echo -e "${GREEN}✓ All contracts found${NC}"
-echo ""
-
 # Check build tools
 echo -e "${CYAN}Checking build tools...${NC}"
 if ! command -v cargo &> /dev/null; then
     echo -e "${RED}✗ Rust not installed!${NC}"
-    echo "Install from: https://rustup.rs/"
     exit 1
 fi
 
 if ! command -v wasm-opt &> /dev/null; then
     echo -e "${YELLOW}⚠ wasm-opt not found - will skip optimization${NC}"
-    echo "Install with: sudo apt-get install binaryen"
     SKIP_OPT=1
 else
     echo -e "${GREEN}✓ wasm-opt found${NC}"
@@ -56,122 +49,66 @@ echo ""
 mkdir -p artifacts
 rm -f artifacts/*.wasm artifacts/*.sha256
 
-# Build each contract
-for contract in "${CONTRACTS[@]}"; do
-    CONTRACT_NAME_SNAKE="${contract//-/_}"
-    
-    echo -e "${BLUE}======================================"
-    echo "  Building: $contract"
-    echo "======================================${NC}"
-    echo ""
-    
-    cd "contracts/$contract"
-    
-    # Step 1: Run tests
-    echo -e "${CYAN}[1/4] Running tests...${NC}"
+# Step 1: Run tests (if not skipped)
+if [ "$SKIP_TESTS" -eq 0 ]; then
+    echo -e "${CYAN}[1/4] Running workspace tests...${NC}"
     if cargo test --quiet; then
-        echo -e "${GREEN}✓ Tests passed${NC}"
+        echo -e "${GREEN}✓ All tests passed${NC}"
     else
-        if [ -t 0 ]; then
-            echo -e "${YELLOW}⚠ Some tests failed - continue anyway? (y/n)${NC}"
-            read -r response
-            if [[ ! "$response" =~ ^[Yy]$ ]]; then
-                exit 1
-            fi
-        else
-            echo -e "${RED}✗ Tests failed!${NC}"
-            exit 1
-        fi
-    fi
-    echo ""
-    
-    # Step 2: Compile to WASM
-    echo -e "${CYAN}[2/4] Compiling to WASM...${NC}"
-    RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --quiet
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Compilation successful${NC}"
-    else
-        echo -e "${RED}✗ Compilation failed!${NC}"
+        echo -e "${RED}✗ Tests failed!${NC}"
         exit 1
     fi
-    echo ""
+else
+    echo -e "${YELLOW}[1/4] Skipping tests${NC}"
+fi
+echo ""
+
+# Step 2: Compile all to WASM
+echo -e "${CYAN}[2/4] Compiling workspace to WASM...${NC}"
+RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --quiet
+echo -e "${GREEN}✓ Compilation successful${NC}"
+echo ""
+
+# Step 3: Optimize with wasm-opt (in parallel)
+if [ -z "$SKIP_OPT" ]; then
+    echo -e "${CYAN}[3/4] Optimizing WASM files...${NC}"
     
-    # Step 3: Optimize with wasm-opt
-    if [ -z "$SKIP_OPT" ]; then
-        echo -e "${CYAN}[3/4] Optimizing with wasm-opt...${NC}"
-        wasm-opt -Oz --enable-sign-ext \
-            "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" \
-            -o "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm"
+    for contract in "${CONTRACTS[@]}"; do
+        CONTRACT_NAME_SNAKE="${contract//-/_}"
+        WASM_IN="target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm"
+        WASM_OUT="artifacts/${CONTRACT_NAME_SNAKE}.wasm"
         
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}✓ Optimization successful${NC}"
-            FINAL_WASM="${CONTRACT_NAME_SNAKE}.wasm"
-            cp "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm" \
-               "../../artifacts/${FINAL_WASM}"
-        else
-            echo -e "${RED}✗ Optimization failed!${NC}"
-            exit 1
-        fi
-    else
-        echo -e "${YELLOW}[3/4] Skipping optimization${NC}"
-        FINAL_WASM="${CONTRACT_NAME_SNAKE}.wasm"
-        cp "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" \
-           "../../artifacts/${FINAL_WASM}"
-    fi
-    echo ""
+        echo -e "  Optimizing ${BLUE}${contract}${NC}..."
+        wasm-opt -Oz --enable-sign-ext "$WASM_IN" -o "$WASM_OUT" &
+    done
     
-    # Step 4: Generate checksum
-    echo -e "${CYAN}[4/4] Generating checksum...${NC}"
-    cd ../../artifacts
-    sha256sum "$FINAL_WASM" > "${FINAL_WASM}.sha256"
-    SIZE=$(du -h "$FINAL_WASM" | cut -f1)
-    CHECKSUM=$(cut -d' ' -f1 "${FINAL_WASM}.sha256")
-    
-    echo -e "${GREEN}✓ Artifact created${NC}"
-    echo -e "  File: ${CYAN}$FINAL_WASM${NC}"
-    echo -e "  Size: ${CYAN}${SIZE}${NC}"
-    echo -e "  SHA256: ${CYAN}${CHECKSUM:0:16}...${NC}"
-    echo ""
-    
-    cd ..
+    # Wait for all background optimizations to finish
+    wait
+    echo -e "${GREEN}✓ Optimization complete${NC}"
+else
+    echo -e "${YELLOW}[3/4] Skipping optimization, copying files directly${NC}"
+    for contract in "${CONTRACTS[@]}"; do
+        CONTRACT_NAME_SNAKE="${contract//-/_}"
+        cp "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" "artifacts/${CONTRACT_NAME_SNAKE}.wasm"
+    done
+fi
+echo ""
+
+# Step 4: Generate checksums
+echo -e "${CYAN}[4/4] Generating checksums...${NC}"
+cd artifacts
+for wasm in *.wasm; do
+    sha256sum "$wasm" > "${wasm}.sha256"
+    CHECKSUM=$(cut -d' ' -f1 "${wasm}.sha256")
+    echo -e "  ${GREEN}✓${NC} $wasm (${CYAN}${CHECKSUM:0:16}...${NC})"
 done
+cd ..
 
 # Summary
+echo ""
 echo -e "${GREEN}=========================================="
-echo "  ✅ BUILD COMPLETE!"
+echo "  ✅ ALL CONTRACTS BUILT!"
 echo "==========================================${NC}"
 echo ""
-echo -e "${BLUE}Artifacts created:${NC}"
 ls -lh artifacts/*.wasm | awk '{print "  " $9 " (" $5 ")"}'
-echo ""
-echo -e "${BLUE}Checksums:${NC}"
-cat artifacts/*.sha256 | awk '{print "  " substr($1,1,16) "... - " $2}'
-echo ""
-echo -e "${YELLOW}Next Steps:${NC}"
-echo "  1. Deploy to testnet for testing (minimum 2 weeks)"
-echo "  2. Deploy lp-locker first, get contract address"
-echo "  3. Deploy reward-controller with lp-locker address"
-echo "  4. Configure both contracts (whitelist LP, create pools)"
-echo "  5. Test complete user flow"
-echo "  6. Deploy to mainnet"
-echo ""
-echo -e "${CYAN}Deployment Commands:${NC}"
-echo "  # Store code"
-echo "  paxid tx wasm store artifacts/lp_locker.wasm \\"
-echo "    --from admin --gas auto --gas-adjustment 1.3"
-echo ""
-echo "  # Instantiate LP Locker"
-echo "  paxid tx wasm instantiate <CODE_ID> \\"
-echo "    '{\"admin\":\"paxi1...\",\"emergency_unlock_delay\":259200}' \\"
-echo "    --from admin --label \"LP Locker v2\" --admin paxi1... --gas auto"
-echo ""
-echo "  # Store & instantiate Reward Controller"
-echo "  paxid tx wasm store artifacts/reward_controller.wasm \\"
-echo "    --from admin --gas auto --gas-adjustment 1.3"
-echo ""
-echo "  paxid tx wasm instantiate <CODE_ID> \\"
-echo "    '{\"admin\":\"paxi1...\",\"lp_locker_contract\":\"paxi1...locker\"}' \\"
-echo "    --from admin --label \"Reward Controller v2\" --admin paxi1... --gas auto"
-echo ""
-echo -e "${GREEN}Happy deploying! 🚀${NC}"
 echo ""

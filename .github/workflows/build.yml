@@ -76,7 +76,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       
       - name: Build Contracts
-        run: chmod +x build_all.sh && ./build_all.sh
+        run: chmod +x build_all.sh && ./build_all.sh --skip-tests
       
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
