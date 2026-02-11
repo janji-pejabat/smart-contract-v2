@@ -10,10 +10,9 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-clear
 echo -e "${GREEN}=========================================="
 echo "  LP PLATFORM v2.0.0 - BUILD SUITE"
-echo "  Locker + Reward Controller"
+echo "  Locker + Reward Controller + Pre-Market"
 echo "==========================================${NC}"
 echo ""
 
@@ -21,6 +20,7 @@ echo ""
 CONTRACTS=(
     "lp-locker"
     "reward-controller"
+    "prc20-pre-market"
 )
 
 # Validate project structure
@@ -72,9 +72,15 @@ for contract in "${CONTRACTS[@]}"; do
     if cargo test --quiet; then
         echo -e "${GREEN}✓ Tests passed${NC}"
     else
-        echo -e "${YELLOW}⚠ Some tests failed - continue anyway? (y/n)${NC}"
-        read -r response
-        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}⚠ Some tests failed${NC}"
+        if [ -t 0 ]; then
+            echo -ne "${YELLOW}Continue anyway? (y/n) ${NC}"
+            read -r response
+            if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+        else
+            echo -e "${RED}Non-interactive session, aborting build due to test failure${NC}"
             exit 1
         fi
     fi
@@ -92,16 +98,22 @@ for contract in "${CONTRACTS[@]}"; do
     echo ""
     
     # Step 3: Optimize with wasm-opt
+    # Adjust path if using workspace
+    WASM_PATH="target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm"
+    if [ ! -f "$WASM_PATH" ]; then
+        WASM_PATH="../../target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm"
+    fi
+
     if [ -z "$SKIP_OPT" ]; then
         echo -e "${CYAN}[3/4] Optimizing with wasm-opt...${NC}"
-        wasm-opt -Oz --enable-sign-ext \
-            "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" \
-            -o "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm"
+        wasm-opt -Oz --enable-sign-ext --enable-bulk-memory \
+            "$WASM_PATH" \
+            -o "${WASM_PATH%.wasm}_optimized.wasm"
         
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}✓ Optimization successful${NC}"
             FINAL_WASM="${CONTRACT_NAME_SNAKE}.wasm"
-            cp "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm" \
+            cp "${WASM_PATH%.wasm}_optimized.wasm" \
                "../../artifacts/${FINAL_WASM}"
         else
             echo -e "${RED}✗ Optimization failed!${NC}"
@@ -110,8 +122,7 @@ for contract in "${CONTRACTS[@]}"; do
     else
         echo -e "${YELLOW}[3/4] Skipping optimization${NC}"
         FINAL_WASM="${CONTRACT_NAME_SNAKE}.wasm"
-        cp "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" \
-           "../../artifacts/${FINAL_WASM}"
+        cp "$WASM_PATH" "../../artifacts/${FINAL_WASM}"
     fi
     echo ""
     

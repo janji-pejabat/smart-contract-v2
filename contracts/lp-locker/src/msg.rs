@@ -12,22 +12,22 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     /// Receive CW20 tokens (LP tokens to lock)
     Receive(Cw20ReceiveMsg),
-    
+
     /// Unlock LP tokens after unlock_time
     UnlockLP { locker_id: u64 },
-    
+
     /// Extend lock duration
     ExtendLock {
         locker_id: u64,
         new_unlock_time: u64,
     },
-    
+
     /// Request emergency unlock (starts delay timer)
     RequestEmergencyUnlock { locker_id: u64 },
-    
+
     /// Execute emergency unlock (after delay)
     ExecuteEmergencyUnlock { locker_id: u64 },
-    
+
     /// Admin: Update configuration
     UpdateConfig {
         admin: Option<String>,
@@ -35,7 +35,7 @@ pub enum ExecuteMsg {
         emergency_unlock_delay: Option<u64>,
         platform_fee_bps: Option<u16>,
     },
-    
+
     /// Admin: Whitelist LP token
     WhitelistLP {
         lp_token: String,
@@ -43,13 +43,13 @@ pub enum ExecuteMsg {
         max_lock_duration: u64,
         bonus_multiplier: Decimal,
     },
-    
+
     /// Admin: Remove LP from whitelist
     RemoveLP { lp_token: String },
-    
+
     /// Admin: Pause contract
     Pause {},
-    
+
     /// Admin: Resume contract
     Resume {},
 }
@@ -68,26 +68,26 @@ pub enum Cw20HookMsg {
 pub enum QueryMsg {
     #[returns(ConfigResponse)]
     Config {},
-    
+
     #[returns(LockerResponse)]
     Locker { locker_id: u64 },
-    
+
     #[returns(LockersResponse)]
     LockersByOwner {
         owner: String,
         start_after: Option<u64>,
         limit: Option<u32>,
     },
-    
+
     #[returns(WhitelistedLPResponse)]
     WhitelistedLP { lp_token: String },
-    
+
     #[returns(Vec<WhitelistedLPResponse>)]
     AllWhitelistedLPs {
         start_after: Option<String>,
         limit: Option<u32>,
     },
-    
+
     #[returns(TotalLockedResponse)]
     TotalLockedByLP { lp_token: String },
 }

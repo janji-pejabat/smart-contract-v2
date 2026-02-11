@@ -17,17 +17,15 @@ jobs:
     name: Test Contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: wasm32-unknown-unknown
-          override: true
+          targets: wasm32-unknown-unknown
       
       - name: Cache Cargo
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -45,19 +43,21 @@ jobs:
         working-directory: contracts/reward-controller
         run: cargo test --verbose
 
+      - name: Run Pre-Market Tests
+        working-directory: contracts/prc20-pre-market
+        run: cargo test --verbose
+
   build:
     name: Build WASM
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: wasm32-unknown-unknown
-          override: true
+          targets: wasm32-unknown-unknown
       
       - name: Install wasm-opt
         run: |
@@ -65,7 +65,7 @@ jobs:
           sudo apt-get install -y binaryen
       
       - name: Cache Cargo
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -79,7 +79,7 @@ jobs:
         run: chmod +x build_all.sh && ./build_all.sh
       
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wasm-contracts
           path: |
@@ -99,6 +99,7 @@ jobs:
             ### Contracts
             - `lp_locker.wasm` - LP Locker Contract
             - `reward_controller.wasm` - Reward Controller Contract
+            - `prc20_pre_market.wasm` - Pre-Market Contract
             
             ### Checksums
             Verify integrity using `.sha256` files
@@ -112,14 +113,12 @@ jobs:
     name: Lint & Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           components: clippy, rustfmt
-          override: true
       
       - name: Run Clippy (LP Locker)
         working-directory: contracts/lp-locker
@@ -128,6 +127,10 @@ jobs:
       - name: Run Clippy (Reward Controller)
         working-directory: contracts/reward-controller
         run: cargo clippy -- -D warnings
+
+      - name: Run Clippy (Pre-Market)
+        working-directory: contracts/prc20-pre-market
+        run: cargo clippy -- -D warnings
       
       - name: Check Formatting (LP Locker)
         working-directory: contracts/lp-locker
@@ -135,4 +138,8 @@ jobs:
       
       - name: Check Formatting (Reward Controller)
         working-directory: contracts/reward-controller
+        run: cargo fmt -- --check
+
+      - name: Check Formatting (Pre-Market)
+        working-directory: contracts/prc20-pre-market
         run: cargo fmt -- --check
