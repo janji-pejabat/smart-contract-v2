@@ -17,7 +17,7 @@ jobs:
     name: Test Contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Install Rust
         uses: actions-rs/toolchain@v1
@@ -27,7 +27,7 @@ jobs:
           override: true
       
       - name: Cache Cargo
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -45,12 +45,16 @@ jobs:
         working-directory: contracts/reward-controller
         run: cargo test --verbose
 
+      - name: Run PRC20 Vesting Tests
+        working-directory: contracts/prc20-vesting
+        run: cargo test --verbose
+
   build:
     name: Build WASM
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Install Rust
         uses: actions-rs/toolchain@v1
@@ -65,7 +69,7 @@ jobs:
           sudo apt-get install -y binaryen
       
       - name: Cache Cargo
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -79,7 +83,7 @@ jobs:
         run: chmod +x build_all.sh && ./build_all.sh
       
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wasm-contracts
           path: |
@@ -112,7 +116,7 @@ jobs:
     name: Lint & Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Install Rust
         uses: actions-rs/toolchain@v1
@@ -129,10 +133,18 @@ jobs:
         working-directory: contracts/reward-controller
         run: cargo clippy -- -D warnings
       
+      - name: Run Clippy (PRC20 Vesting)
+        working-directory: contracts/prc20-vesting
+        run: cargo clippy -- -D warnings
+
       - name: Check Formatting (LP Locker)
         working-directory: contracts/lp-locker
         run: cargo fmt -- --check
       
       - name: Check Formatting (Reward Controller)
         working-directory: contracts/reward-controller
+        run: cargo fmt -- --check
+
+      - name: Check Formatting (PRC20 Vesting)
+        working-directory: contracts/prc20-vesting
         run: cargo fmt -- --check

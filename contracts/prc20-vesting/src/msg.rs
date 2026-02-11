@@ -12,21 +12,13 @@ pub enum ExecuteMsg {
     /// Receive CW20 tokens to create a vesting schedule
     Receive(Cw20ReceiveMsg),
     /// Claim vested tokens for specific vesting IDs
-    Claim {
-        ids: Vec<u64>,
-    },
+    Claim { ids: Vec<u64> },
     /// Revoke a revocable vesting schedule
-    Revoke {
-        id: u64,
-    },
+    Revoke { id: u64 },
     /// Update the admin address
-    UpdateAdmin {
-        admin: String,
-    },
+    UpdateAdmin { admin: String },
     /// Pause/Unpause the contract
-    SetPaused {
-        paused: bool,
-    },
+    SetPaused { paused: bool },
 }
 
 #[cw_serde]
@@ -40,9 +32,7 @@ pub enum Cw20HookMsg {
         revocable: bool,
     },
     /// Create multiple vesting schedules from a single CW20 transfer
-    BatchCreateVesting {
-        vestings: Vec<VestingCreation>,
-    },
+    BatchCreateVesting { vestings: Vec<VestingCreation> },
 }
 
 #[cw_serde]
@@ -64,9 +54,7 @@ pub enum VestingSchedule {
         release_interval: u64,
     },
     /// Custom milestones
-    Custom {
-        milestones: Vec<Milestone>,
-    },
+    Custom { milestones: Vec<Milestone> },
 }
 
 #[cw_serde]

@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
-    Uint128, WasmMsg, Order,
+    from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response,
+    StdResult, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
@@ -11,7 +11,7 @@ use cw_storage_plus::Bound;
 use crate::error::ContractError;
 use crate::msg::{
     ConfigResponse, Cw20HookMsg, ExecuteMsg, GlobalStatsResponse, InstantiateMsg, QueryMsg,
-    VestingResponse, VestingSchedule, VestingCreation,
+    VestingCreation, VestingResponse, VestingSchedule,
 };
 use crate::state::{
     Config, GlobalStats, VestingAccount, BENEFICIARY_VESTINGS, CATEGORY_VESTINGS, CONFIG,
@@ -106,7 +106,8 @@ fn create_vesting(
 ) -> Result<Response, ContractError> {
     let beneficiary_addr = deps.api.addr_validate(&beneficiary)?;
 
-    validate_schedule(&schedule, amount).map_err(|e| ContractError::InvalidSchedule { reason: e })?;
+    validate_schedule(&schedule, amount)
+        .map_err(|e| ContractError::InvalidSchedule { reason: e })?;
 
     let id = VESTING_COUNT.load(deps.storage)? + 1;
     VESTING_COUNT.save(deps.storage, &id)?;
@@ -127,10 +128,12 @@ fn create_vesting(
     BENEFICIARY_VESTINGS.save(deps.storage, (&beneficiary_addr, id), &true)?;
     CATEGORY_VESTINGS.save(deps.storage, (&category, id), &true)?;
 
-    let mut stats = GLOBAL_STATS.may_load(deps.storage, &token_address)?.unwrap_or(GlobalStats {
-        total_vested: Uint128::zero(),
-        total_claimed: Uint128::zero(),
-    });
+    let mut stats = GLOBAL_STATS
+        .may_load(deps.storage, &token_address)?
+        .unwrap_or(GlobalStats {
+            total_vested: Uint128::zero(),
+            total_claimed: Uint128::zero(),
+        });
     stats.total_vested += amount;
     GLOBAL_STATS.save(deps.storage, &token_address, &stats)?;
 
@@ -151,10 +154,12 @@ fn batch_create_vesting(
     let mut sum = Uint128::zero();
     let mut responses = vec![];
     let mut id_count = VESTING_COUNT.load(deps.storage)?;
-    let mut stats = GLOBAL_STATS.may_load(deps.storage, &token_address)?.unwrap_or(GlobalStats {
-        total_vested: Uint128::zero(),
-        total_claimed: Uint128::zero(),
-    });
+    let mut stats = GLOBAL_STATS
+        .may_load(deps.storage, &token_address)?
+        .unwrap_or(GlobalStats {
+            total_vested: Uint128::zero(),
+            total_claimed: Uint128::zero(),
+        });
 
     for v in vestings {
         sum += v.amount;
@@ -199,7 +204,10 @@ fn batch_create_vesting(
         .add_attribute("action", "batch_create_vesting")
         .add_attribute("count", responses.len().to_string())
         .add_attribute("total_amount", total_amount)
-        .add_attribute("first_id", (id_count - responses.len() as u64 + 1).to_string())
+        .add_attribute(
+            "first_id",
+            (id_count - responses.len() as u64 + 1).to_string(),
+        )
         .add_attribute("last_id", id_count.to_string()))
 }
 
@@ -222,7 +230,11 @@ pub fn execute_claim(
         // Let's restrict it to beneficiary for now, or just allow anyone.
         // If we allow anyone, we must ensure it goes to vesting.beneficiary.
 
-        let vested = calculate_vested_amount(&vesting.schedule, vesting.total_amount, env.block.time.seconds())?;
+        let vested = calculate_vested_amount(
+            &vesting.schedule,
+            vesting.total_amount,
+            env.block.time.seconds(),
+        )?;
         let claimable = vested.saturating_sub(vesting.released_amount);
 
         if claimable.is_zero() {
@@ -232,10 +244,12 @@ pub fn execute_claim(
         vesting.released_amount += claimable;
         VESTING_ACCOUNTS.save(deps.storage, *id, &vesting)?;
 
-        let mut stats = GLOBAL_STATS.may_load(deps.storage, &vesting.token_address)?.unwrap_or(GlobalStats {
-            total_vested: Uint128::zero(),
-            total_claimed: Uint128::zero(),
-        });
+        let mut stats = GLOBAL_STATS
+            .may_load(deps.storage, &vesting.token_address)?
+            .unwrap_or(GlobalStats {
+                total_vested: Uint128::zero(),
+                total_claimed: Uint128::zero(),
+            });
         stats.total_claimed += claimable;
         total_claimed += claimable;
         GLOBAL_STATS.save(deps.storage, &vesting.token_address, &stats)?;
@@ -259,7 +273,13 @@ pub fn execute_claim(
         .add_attribute("action", "claim")
         .add_attribute("beneficiary", info.sender)
         .add_attribute("total_claimed", total_claimed)
-        .add_attribute("ids", ids.iter().map(|id| id.to_string()).collect::<Vec<String>>().join(",")))
+        .add_attribute(
+            "ids",
+            ids.iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<String>>()
+                .join(","),
+        ))
 }
 
 pub fn execute_revoke(
@@ -285,7 +305,11 @@ pub fn execute_revoke(
         return Err(ContractError::VestingAlreadyRevoked {});
     }
 
-    let vested = calculate_vested_amount(&vesting.schedule, vesting.total_amount, env.block.time.seconds())?;
+    let vested = calculate_vested_amount(
+        &vesting.schedule,
+        vesting.total_amount,
+        env.block.time.seconds(),
+    )?;
     let unvested = vesting.total_amount.saturating_sub(vested);
 
     vesting.revoked = true;
@@ -300,10 +324,12 @@ pub fn execute_revoke(
 
     VESTING_ACCOUNTS.save(deps.storage, id, &vesting)?;
 
-    let mut stats = GLOBAL_STATS.may_load(deps.storage, &vesting.token_address)?.unwrap_or(GlobalStats {
-        total_vested: Uint128::zero(),
-        total_claimed: Uint128::zero(),
-    });
+    let mut stats = GLOBAL_STATS
+        .may_load(deps.storage, &vesting.token_address)?
+        .unwrap_or(GlobalStats {
+            total_vested: Uint128::zero(),
+            total_claimed: Uint128::zero(),
+        });
     stats.total_vested = stats.total_vested.saturating_sub(unvested);
     GLOBAL_STATS.save(deps.storage, &vesting.token_address, &stats)?;
 
@@ -393,7 +419,9 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             limit,
         )?),
         QueryMsg::ClaimableAmount { id } => to_json_binary(&query_claimable_amount(deps, env, id)?),
-        QueryMsg::GlobalStats { token_address } => to_json_binary(&query_global_stats(deps, token_address)?),
+        QueryMsg::GlobalStats { token_address } => {
+            to_json_binary(&query_global_stats(deps, token_address)?)
+        }
     }
 }
 
@@ -407,7 +435,11 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
 
 fn query_vesting(deps: Deps, env: Env, id: u64) -> StdResult<VestingResponse> {
     let vesting = VESTING_ACCOUNTS.load(deps.storage, id)?;
-    let vested = calculate_vested_amount(&vesting.schedule, vesting.total_amount, env.block.time.seconds())?;
+    let vested = calculate_vested_amount(
+        &vesting.schedule,
+        vesting.total_amount,
+        env.block.time.seconds(),
+    )?;
     let claimable = vested.saturating_sub(vesting.released_amount);
 
     Ok(VestingResponse {
@@ -473,16 +505,22 @@ fn query_vestings_by_category(
 
 fn query_claimable_amount(deps: Deps, env: Env, id: u64) -> StdResult<Uint128> {
     let vesting = VESTING_ACCOUNTS.load(deps.storage, id)?;
-    let vested = calculate_vested_amount(&vesting.schedule, vesting.total_amount, env.block.time.seconds())?;
+    let vested = calculate_vested_amount(
+        &vesting.schedule,
+        vesting.total_amount,
+        env.block.time.seconds(),
+    )?;
     Ok(vested.saturating_sub(vesting.released_amount))
 }
 
 fn query_global_stats(deps: Deps, token_address: String) -> StdResult<GlobalStatsResponse> {
     let token_addr = deps.api.addr_validate(&token_address)?;
-    let stats = GLOBAL_STATS.may_load(deps.storage, &token_addr)?.unwrap_or(GlobalStats {
-        total_vested: Uint128::zero(),
-        total_claimed: Uint128::zero(),
-    });
+    let stats = GLOBAL_STATS
+        .may_load(deps.storage, &token_addr)?
+        .unwrap_or(GlobalStats {
+            total_vested: Uint128::zero(),
+            total_claimed: Uint128::zero(),
+        });
     let count = VESTING_COUNT.load(deps.storage)?;
     Ok(GlobalStatsResponse {
         total_vested: stats.total_vested,

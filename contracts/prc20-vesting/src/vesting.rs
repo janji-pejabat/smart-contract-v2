@@ -1,5 +1,5 @@
-use cosmwasm_std::{Uint128, StdResult};
 use crate::msg::VestingSchedule;
+use cosmwasm_std::{StdResult, Uint128};
 
 pub fn calculate_vested_amount(
     schedule: &VestingSchedule,
