@@ -84,7 +84,7 @@ if [ -z "$SKIP_OPT" ]; then
         fi
 
         echo -e "  Optimizing ${BLUE}${contract}${NC}..."
-        wasm-opt -Oz --enable-sign-ext "$WASM_IN" -o "$WASM_OUT"
+        wasm-opt -Oz --enable-sign-ext --enable-bulk-memory "$WASM_IN" -o "$WASM_OUT"
     done
     echo -e "${GREEN}✓ Optimization complete${NC}"
 else
