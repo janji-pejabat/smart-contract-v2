@@ -40,5 +40,8 @@ pub enum ContractError {
     InvalidRoomConfig {},
 
     #[error("Overflow")]
-    Overflow { #[from] source: cosmwasm_std::OverflowError },
+    Overflow {
+        #[from]
+        source: cosmwasm_std::OverflowError,
+    },
 }

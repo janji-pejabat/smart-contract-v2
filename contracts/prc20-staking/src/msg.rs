@@ -1,7 +1,7 @@
+use crate::state::{AssetInfo, AutoCompoundConfig, NFTConfig, Room, StakeConfig, UserPosition};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw20::Cw20ReceiveMsg;
-use crate::state::{AssetInfo, StakeConfig, NFTConfig, AutoCompoundConfig, Room, UserPosition};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -97,27 +97,16 @@ pub enum QueryMsg {
     },
 
     #[returns(UserPositionResponse)]
-    UserPosition {
-        room_id: u64,
-        user: String,
-    },
+    UserPosition { room_id: u64, user: String },
 
     #[returns(PendingRewardsResponse)]
-    PendingRewards {
-        room_id: u64,
-        user: String,
-    },
+    PendingRewards { room_id: u64, user: String },
 
     #[returns(APREstimateResponse)]
-    APREstimate {
-        room_id: u64,
-    },
+    APREstimate { room_id: u64 },
 
     #[returns(EligibilityResponse)]
-    Eligibility {
-        room_id: u64,
-        user: String,
-    },
+    Eligibility { room_id: u64, user: String },
 }
 
 #[cw_serde]

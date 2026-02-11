@@ -1,20 +1,17 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, Decimal, Addr, CosmosMsg, WasmMsg, BankMsg, Coin,
-    from_json,
+    entry_point, from_json, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps,
+    DepsMut, Env, MessageInfo, Response, StdResult, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 
 use crate::error::ContractError;
 use crate::msg::{
-    ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg, Cw20HookMsg,
-    RoomResponse, UserPositionResponse, PendingRewardsResponse,
-    APREstimateResponse, EligibilityResponse,
+    APREstimateResponse, ConfigResponse, Cw20HookMsg, EligibilityResponse, ExecuteMsg,
+    InstantiateMsg, PendingRewardsResponse, QueryMsg, RoomResponse, UserPositionResponse,
 };
 use crate::state::{
-    Config, Room, UserPosition, AssetInfo, RewardConfig,
-    CONFIG, ROOMS, USER_POSITIONS,
+    AssetInfo, Config, RewardConfig, Room, UserPosition, CONFIG, ROOMS, USER_POSITIONS,
 };
 
 const CONTRACT_NAME: &str = "crates.io:prc20-staking";
@@ -53,18 +50,16 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Receive(msg) => execute_receive(deps, env, info, msg),
-        ExecuteMsg::Unstake { room_id, amount, token_address } => {
-            execute_unstake(deps, env, info, room_id, amount, token_address)
-        }
-        ExecuteMsg::ClaimRewards { room_id } => {
-            execute_claim_rewards(deps, env, info, room_id)
-        }
+        ExecuteMsg::Unstake {
+            room_id,
+            amount,
+            token_address,
+        } => execute_unstake(deps, env, info, room_id, amount, token_address),
+        ExecuteMsg::ClaimRewards { room_id } => execute_claim_rewards(deps, env, info, room_id),
         ExecuteMsg::ToggleAutoCompound { room_id, enabled } => {
             execute_toggle_auto_compound(deps, env, info, room_id, enabled)
         }
-        ExecuteMsg::Compound { room_id } => {
-            execute_compound(deps, env, info, room_id)
-        }
+        ExecuteMsg::Compound { room_id } => execute_compound(deps, env, info, room_id),
         ExecuteMsg::CreateRoom {
             name,
             stake_config,
@@ -73,19 +68,39 @@ pub fn execute(
             early_withdraw_penalty,
             cooldown_period,
         } => execute_create_room(
-            deps, env, info, name, stake_config, nft_config,
-            auto_compound_config, early_withdraw_penalty, cooldown_period,
+            deps,
+            env,
+            info,
+            name,
+            stake_config,
+            nft_config,
+            auto_compound_config,
+            early_withdraw_penalty,
+            cooldown_period,
         ),
         ExecuteMsg::UpdateRoom {
             room_id,
             paused,
             early_withdraw_penalty,
             cooldown_period,
-        } => execute_update_room(deps, info, room_id, paused, early_withdraw_penalty, cooldown_period),
-        ExecuteMsg::AddRewardPool { room_id, reward_token, emission_per_second } => {
-            execute_add_reward_pool(deps, env, info, room_id, reward_token, emission_per_second)
-        }
-        ExecuteMsg::UpdateRewardPool { room_id, reward_token, emission_per_second } => {
+        } => execute_update_room(
+            deps,
+            info,
+            room_id,
+            paused,
+            early_withdraw_penalty,
+            cooldown_period,
+        ),
+        ExecuteMsg::AddRewardPool {
+            room_id,
+            reward_token,
+            emission_per_second,
+        } => execute_add_reward_pool(deps, env, info, room_id, reward_token, emission_per_second),
+        ExecuteMsg::UpdateRewardPool {
+            room_id,
+            reward_token,
+            emission_per_second,
+        } => {
             execute_update_reward_pool(deps, env, info, room_id, reward_token, emission_per_second)
         }
         ExecuteMsg::FundRewardPool { room_id } => {
@@ -155,9 +170,15 @@ fn execute_update_room(
 
     let mut room = ROOMS.load(deps.storage, room_id)?;
 
-    if let Some(p) = paused { room.paused = p; }
-    if let Some(penalty) = early_withdraw_penalty { room.early_withdraw_penalty = penalty; }
-    if let Some(cp) = cooldown_period { room.cooldown_period = cp; }
+    if let Some(p) = paused {
+        room.paused = p;
+    }
+    if let Some(penalty) = early_withdraw_penalty {
+        room.early_withdraw_penalty = penalty;
+    }
+    if let Some(cp) = cooldown_period {
+        room.cooldown_period = cp;
+    }
 
     ROOMS.save(deps.storage, room_id, &room)?;
 
@@ -185,7 +206,11 @@ fn execute_add_reward_pool(
     update_room_rewards(&mut room, env.block.time.seconds());
 
     // Check if token already exists
-    if room.reward_configs.iter().any(|rc| rc.reward_token == reward_token) {
+    if room
+        .reward_configs
+        .iter()
+        .any(|rc| rc.reward_token == reward_token)
+    {
         return Err(ContractError::InvalidRewardToken {});
     }
 
@@ -220,7 +245,11 @@ fn execute_update_reward_pool(
     let mut room = ROOMS.load(deps.storage, room_id)?;
     update_room_rewards(&mut room, env.block.time.seconds());
 
-    if let Some(rc) = room.reward_configs.iter_mut().find(|rc| rc.reward_token == reward_token) {
+    if let Some(rc) = room
+        .reward_configs
+        .iter_mut()
+        .find(|rc| rc.reward_token == reward_token)
+    {
         rc.emission_per_second = emission_per_second;
     } else {
         return Err(ContractError::InvalidRewardToken {});
@@ -249,7 +278,11 @@ fn execute_fund_reward_pool(
     let coin = &info.funds[0];
     let asset = AssetInfo::Native(coin.denom.clone());
 
-    if let Some(rc) = room.reward_configs.iter_mut().find(|rc| rc.reward_token == asset) {
+    if let Some(rc) = room
+        .reward_configs
+        .iter_mut()
+        .find(|rc| rc.reward_token == asset)
+    {
         rc.total_deposited = rc.total_deposited.checked_add(coin.amount)?;
     } else {
         return Err(ContractError::InvalidRewardToken {});
@@ -298,7 +331,9 @@ fn update_room_rewards(room: &mut Room, current_time: u64) {
     for config in &mut room.reward_configs {
         // Calculate max possible reward based on pool balance
         let available = config.total_deposited.saturating_sub(config.total_claimed);
-        if available.is_zero() { continue; }
+        if available.is_zero() {
+            continue;
+        }
 
         let mut reward_accrued = config.emission_per_second.multiply_ratio(duration, 1u128);
         if reward_accrued > available {
@@ -307,7 +342,10 @@ fn update_room_rewards(room: &mut Room, current_time: u64) {
 
         if reward_accrued > Uint128::zero() {
             let share_increase = Decimal::from_ratio(reward_accrued, room.total_staked_weight);
-            config.acc_reward_per_share = config.acc_reward_per_share.checked_add(share_increase).unwrap_or(config.acc_reward_per_share);
+            config.acc_reward_per_share = config
+                .acc_reward_per_share
+                .checked_add(share_increase)
+                .unwrap_or(config.acc_reward_per_share);
         }
     }
 
@@ -318,7 +356,9 @@ fn calculate_user_weight(user_pos: &UserPosition, room: &Room) -> Uint128 {
     // Check AND rule
     if room.stake_config.is_and_rule {
         for token in &room.stake_config.stake_tokens {
-            let user_token_stake = user_pos.staked_amounts.iter()
+            let user_token_stake = user_pos
+                .staked_amounts
+                .iter()
                 .find(|(t, _)| t == token)
                 .map(|(_, a)| *a)
                 .unwrap_or(Uint128::zero());
@@ -340,23 +380,38 @@ fn calculate_user_weight(user_pos: &UserPosition, room: &Room) -> Uint128 {
 
 fn update_user_rewards(user_pos: &mut UserPosition, room: &Room, weight: Uint128) {
     for reward_config in &room.reward_configs {
-        let last_paid = user_pos.last_reward_per_share.iter()
+        let last_paid = user_pos
+            .last_reward_per_share
+            .iter()
             .find(|(asset, _)| asset == &reward_config.reward_token)
             .map(|(_, val)| *val)
             .unwrap_or(Decimal::zero());
 
         let pending = weight * (reward_config.acc_reward_per_share - last_paid);
 
-        if let Some(pos) = user_pos.pending_rewards.iter_mut().find(|(asset, _)| asset == &reward_config.reward_token) {
+        if let Some(pos) = user_pos
+            .pending_rewards
+            .iter_mut()
+            .find(|(asset, _)| asset == &reward_config.reward_token)
+        {
             pos.1 += pending;
         } else {
-            user_pos.pending_rewards.push((reward_config.reward_token.clone(), pending));
+            user_pos
+                .pending_rewards
+                .push((reward_config.reward_token.clone(), pending));
         }
 
-        if let Some(pos) = user_pos.last_reward_per_share.iter_mut().find(|(asset, _)| asset == &reward_config.reward_token) {
+        if let Some(pos) = user_pos
+            .last_reward_per_share
+            .iter_mut()
+            .find(|(asset, _)| asset == &reward_config.reward_token)
+        {
             pos.1 = reward_config.acc_reward_per_share;
         } else {
-            user_pos.last_reward_per_share.push((reward_config.reward_token.clone(), reward_config.acc_reward_per_share));
+            user_pos.last_reward_per_share.push((
+                reward_config.reward_token.clone(),
+                reward_config.acc_reward_per_share,
+            ));
         }
     }
 }
@@ -374,7 +429,9 @@ fn query_nft_multiplier(deps: Deps, user: &Addr, room: &Room) -> StdResult<Decim
         limit: Some(1),
     };
 
-    let res: cw721::TokensResponse = deps.querier.query_wasm_smart(&nft_config.nft_address, &query_msg)?;
+    let res: cw721::TokensResponse = deps
+        .querier
+        .query_wasm_smart(&nft_config.nft_address, &query_msg)?;
 
     if res.tokens.is_empty() {
         if nft_config.required_for_staking {
@@ -408,8 +465,12 @@ fn execute_receive(
 ) -> Result<Response, ContractError> {
     let hook_msg: Cw20HookMsg = from_json(&msg.msg)?;
     match hook_msg {
-        Cw20HookMsg::Stake { room_id } => execute_stake(deps, env, info, room_id, msg.sender, msg.amount),
-        Cw20HookMsg::FundPool { room_id } => execute_fund_pool_cw20(deps, info, room_id, msg.amount),
+        Cw20HookMsg::Stake { room_id } => {
+            execute_stake(deps, env, info, room_id, msg.sender, msg.amount)
+        }
+        Cw20HookMsg::FundPool { room_id } => {
+            execute_fund_pool_cw20(deps, info, room_id, msg.amount)
+        }
     }
 }
 
@@ -458,7 +519,11 @@ fn execute_stake(
     user_pos.nft_multiplier = query_nft_multiplier(deps.as_ref(), &user_addr, &room)?;
 
     // Add stake
-    if let Some(pos) = user_pos.staked_amounts.iter_mut().find(|(t, _)| t == stake_token) {
+    if let Some(pos) = user_pos
+        .staked_amounts
+        .iter_mut()
+        .find(|(t, _)| t == stake_token)
+    {
         pos.1 = pos.1.checked_add(amount)?;
     } else {
         user_pos.staked_amounts.push((stake_token, amount));
@@ -466,7 +531,9 @@ fn execute_stake(
 
     // Update weights
     let new_weight = calculate_user_weight(&user_pos, &room);
-    room.total_staked_weight = room.total_staked_weight.checked_sub(old_weight)?
+    room.total_staked_weight = room
+        .total_staked_weight
+        .checked_sub(old_weight)?
         .checked_add(new_weight)?;
 
     user_pos.last_interaction = env.block.time.seconds();
@@ -490,7 +557,11 @@ fn execute_fund_pool_cw20(
     let mut room = ROOMS.load(deps.storage, room_id)?;
     let asset = AssetInfo::Cw20(info.sender);
 
-    if let Some(rc) = room.reward_configs.iter_mut().find(|rc| rc.reward_token == asset) {
+    if let Some(rc) = room
+        .reward_configs
+        .iter_mut()
+        .find(|rc| rc.reward_token == asset)
+    {
         rc.total_deposited = rc.total_deposited.checked_add(amount)?;
     } else {
         return Err(ContractError::InvalidRewardToken {});
@@ -523,7 +594,10 @@ fn execute_unstake(
         return Err(ContractError::CooldownNotElapsed {});
     }
 
-    let pos_idx = user_pos.staked_amounts.iter().position(|(t, _)| t == stake_token)
+    let pos_idx = user_pos
+        .staked_amounts
+        .iter()
+        .position(|(t, _)| t == stake_token)
         .ok_or(ContractError::InvalidStakeToken {})?;
 
     if user_pos.staked_amounts[pos_idx].1 < amount {
@@ -547,7 +621,9 @@ fn execute_unstake(
 
     // Update weights
     let new_weight = calculate_user_weight(&user_pos, &room);
-    room.total_staked_weight = room.total_staked_weight.checked_sub(old_weight)?
+    room.total_staked_weight = room
+        .total_staked_weight
+        .checked_sub(old_weight)?
         .checked_add(new_weight)?;
 
     user_pos.last_interaction = env.block.time.seconds();
@@ -593,13 +669,19 @@ fn execute_claim_rewards(
     let mut claimed_assets: Vec<String> = vec![];
 
     for (asset, amount) in user_pos.pending_rewards.iter_mut() {
-        if amount.is_zero() { continue; }
+        if amount.is_zero() {
+            continue;
+        }
 
         let claim_amount = *amount;
         *amount = Uint128::zero();
 
         // Check pool balance
-        if let Some(rc) = room.reward_configs.iter_mut().find(|rc| &rc.reward_token == asset) {
+        if let Some(rc) = room
+            .reward_configs
+            .iter_mut()
+            .find(|rc| &rc.reward_token == asset)
+        {
             rc.total_claimed = rc.total_claimed.checked_add(claim_amount)?;
         }
 
@@ -660,7 +742,9 @@ fn execute_toggle_auto_compound(
     let nft_multiplier = query_nft_multiplier(deps.as_ref(), &user_addr, &room)?;
     let has_nft = nft_multiplier > Decimal::one(); // Simple check for now
 
-    let eligible = if room.auto_compound_config.nft_required && room.auto_compound_config.min_stake_threshold > Uint128::zero() {
+    let eligible = if room.auto_compound_config.nft_required
+        && room.auto_compound_config.min_stake_threshold > Uint128::zero()
+    {
         has_min_stake && has_nft
     } else if room.auto_compound_config.nft_required {
         has_nft
@@ -706,10 +790,16 @@ fn execute_compound(
 
     // Compound only if reward token is one of the stake tokens
     for (asset, amount) in user_pos.pending_rewards.iter_mut() {
-        if amount.is_zero() { continue; }
+        if amount.is_zero() {
+            continue;
+        }
 
         if let AssetInfo::Cw20(token_addr) = asset {
-            if let Some(stake_pos) = user_pos.staked_amounts.iter_mut().find(|(t, _)| t == token_addr) {
+            if let Some(stake_pos) = user_pos
+                .staked_amounts
+                .iter_mut()
+                .find(|(t, _)| t == token_addr)
+            {
                 stake_pos.1 += *amount;
                 compounded_amount += *amount;
                 *amount = Uint128::zero();
@@ -723,7 +813,9 @@ fn execute_compound(
 
     // Update weights
     let new_weight = calculate_user_weight(&user_pos, &room);
-    room.total_staked_weight = room.total_staked_weight.checked_sub(old_weight)?
+    room.total_staked_weight = room
+        .total_staked_weight
+        .checked_sub(old_weight)?
         .checked_add(new_weight)?;
 
     user_pos.last_interaction = env.block.time.seconds();
@@ -742,11 +834,19 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Config {} => to_json_binary(&query_config(deps)?),
         QueryMsg::Room { room_id } => to_json_binary(&query_room(deps, room_id)?),
-        QueryMsg::Rooms { start_after, limit } => to_json_binary(&query_rooms(deps, start_after, limit)?),
-        QueryMsg::UserPosition { room_id, user } => to_json_binary(&query_user_position(deps, room_id, user)?),
-        QueryMsg::PendingRewards { room_id, user } => to_json_binary(&query_pending_rewards(deps, env, room_id, user)?),
+        QueryMsg::Rooms { start_after, limit } => {
+            to_json_binary(&query_rooms(deps, start_after, limit)?)
+        }
+        QueryMsg::UserPosition { room_id, user } => {
+            to_json_binary(&query_user_position(deps, room_id, user)?)
+        }
+        QueryMsg::PendingRewards { room_id, user } => {
+            to_json_binary(&query_pending_rewards(deps, env, room_id, user)?)
+        }
         QueryMsg::APREstimate { room_id } => to_json_binary(&query_apr_estimate(deps, room_id)?),
-        QueryMsg::Eligibility { room_id, user } => to_json_binary(&query_eligibility(deps, room_id, user)?),
+        QueryMsg::Eligibility { room_id, user } => {
+            to_json_binary(&query_eligibility(deps, room_id, user)?)
+        }
     }
 }
 
@@ -763,7 +863,11 @@ fn query_room(deps: Deps, room_id: u64) -> StdResult<RoomResponse> {
     Ok(RoomResponse { room })
 }
 
-fn query_rooms(deps: Deps, start_after: Option<u64>, limit: Option<u32>) -> StdResult<Vec<RoomResponse>> {
+fn query_rooms(
+    deps: Deps,
+    start_after: Option<u64>,
+    limit: Option<u32>,
+) -> StdResult<Vec<RoomResponse>> {
     let limit = limit.unwrap_or(10).min(30) as usize;
     let start = start_after.map(cw_storage_plus::Bound::exclusive);
 
@@ -783,7 +887,12 @@ fn query_user_position(deps: Deps, room_id: u64, user: String) -> StdResult<User
     Ok(UserPositionResponse { position })
 }
 
-fn query_pending_rewards(deps: Deps, env: Env, room_id: u64, user: String) -> StdResult<PendingRewardsResponse> {
+fn query_pending_rewards(
+    deps: Deps,
+    env: Env,
+    room_id: u64,
+    user: String,
+) -> StdResult<PendingRewardsResponse> {
     let room = ROOMS.load(deps.storage, room_id)?;
     let user_addr = deps.api.addr_validate(&user)?;
     let user_pos = USER_POSITIONS.may_load(deps.storage, (&user_addr, room_id))?;
@@ -796,7 +905,9 @@ fn query_pending_rewards(deps: Deps, env: Env, room_id: u64, user: String) -> St
         // For query, using cached is fine and safer (no gas limit issues if complex)
         let weight = calculate_user_weight(&up, &room_copy);
         update_user_rewards(&mut up, &room_copy, weight);
-        Ok(PendingRewardsResponse { rewards: up.pending_rewards })
+        Ok(PendingRewardsResponse {
+            rewards: up.pending_rewards,
+        })
     } else {
         Ok(PendingRewardsResponse { rewards: vec![] })
     }
@@ -815,7 +926,11 @@ fn query_apr_estimate(deps: Deps, room_id: u64) -> StdResult<APREstimateResponse
         for rc in room.reward_configs {
             // Adjust emission based on remaining balance for a more accurate dynamic APR
             let available = rc.total_deposited.saturating_sub(rc.total_claimed);
-            let effective_emission = if available.is_zero() { Uint128::zero() } else { rc.emission_per_second };
+            let effective_emission = if available.is_zero() {
+                Uint128::zero()
+            } else {
+                rc.emission_per_second
+            };
 
             let annual_emission = effective_emission.checked_mul(Uint128::from(year_seconds))?;
             let apr = Decimal::from_ratio(annual_emission, room.total_staked_weight);
@@ -844,11 +959,15 @@ fn query_eligibility(deps: Deps, room_id: u64, user: String) -> StdResult<Eligib
 
     let user_pos = USER_POSITIONS.may_load(deps.storage, (&user_addr, room_id))?;
     let can_auto_compound = if room.auto_compound_config.enabled {
-        let total_stake: Uint128 = user_pos.map(|up| up.staked_amounts.iter().map(|(_, a)| *a).sum()).unwrap_or(Uint128::zero());
+        let total_stake: Uint128 = user_pos
+            .map(|up| up.staked_amounts.iter().map(|(_, a)| *a).sum())
+            .unwrap_or(Uint128::zero());
         let has_min_stake = total_stake >= room.auto_compound_config.min_stake_threshold;
         let has_nft = multiplier > Decimal::one();
 
-        if room.auto_compound_config.nft_required && room.auto_compound_config.min_stake_threshold > Uint128::zero() {
+        if room.auto_compound_config.nft_required
+            && room.auto_compound_config.min_stake_threshold > Uint128::zero()
+        {
             has_min_stake && has_nft
         } else if room.auto_compound_config.nft_required {
             has_nft

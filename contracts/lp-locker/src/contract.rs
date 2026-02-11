@@ -1,17 +1,17 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, WasmMsg, Addr, Decimal,
+    entry_point, to_json_binary, Addr, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
+    StdResult, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 
 use crate::error::ContractError;
 use crate::msg::{
-    ConfigResponse, ExecuteMsg, InstantiateMsg, LockerResponse, LockersResponse,
-    QueryMsg, WhitelistedLPResponse, TotalLockedResponse, Cw20HookMsg, MigrateMsg,
+    ConfigResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, LockerResponse, LockersResponse,
+    MigrateMsg, QueryMsg, TotalLockedResponse, WhitelistedLPResponse,
 };
 use crate::state::{
-    Config, Locker, WhitelistedLP, CONFIG, LOCKERS, USER_LOCKERS, WHITELISTED_LPS, TOTAL_LOCKED,
+    Config, Locker, WhitelistedLP, CONFIG, LOCKERS, TOTAL_LOCKED, USER_LOCKERS, WHITELISTED_LPS,
 };
 
 const CONTRACT_NAME: &str = "crates.io:lp-locker";
@@ -42,7 +42,10 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("admin", msg.admin)
-        .add_attribute("emergency_unlock_delay", msg.emergency_unlock_delay.to_string()))
+        .add_attribute(
+            "emergency_unlock_delay",
+            msg.emergency_unlock_delay.to_string(),
+        ))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -55,9 +58,10 @@ pub fn execute(
     match msg {
         ExecuteMsg::Receive(msg) => execute_receive(deps, env, info, msg),
         ExecuteMsg::UnlockLP { locker_id } => execute_unlock_lp(deps, env, info, locker_id),
-        ExecuteMsg::ExtendLock { locker_id, new_unlock_time } => {
-            execute_extend_lock(deps, env, info, locker_id, new_unlock_time)
-        }
+        ExecuteMsg::ExtendLock {
+            locker_id,
+            new_unlock_time,
+        } => execute_extend_lock(deps, env, info, locker_id, new_unlock_time),
         ExecuteMsg::RequestEmergencyUnlock { locker_id } => {
             execute_request_emergency_unlock(deps, env, info, locker_id)
         }
@@ -103,7 +107,7 @@ fn execute_receive(
     wrapper: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    
+
     if config.paused {
         return Err(ContractError::Paused {});
     }
@@ -120,9 +124,10 @@ fn execute_receive(
     let msg: Cw20HookMsg = from_json(&wrapper.msg)?;
 
     match msg {
-        Cw20HookMsg::LockLP { unlock_time, metadata } => {
-            execute_lock_lp(deps, env, sender, lp_token, amount, unlock_time, metadata)
-        }
+        Cw20HookMsg::LockLP {
+            unlock_time,
+            metadata,
+        } => execute_lock_lp(deps, env, sender, lp_token, amount, unlock_time, metadata),
     }
 }
 
@@ -146,11 +151,13 @@ fn execute_lock_lp(
 
     // Validate unlock time
     let current_time = env.block.time.seconds();
-    let lock_duration = unlock_time.checked_sub(current_time)
-        .ok_or(ContractError::InvalidUnlockTime {
-            min: whitelist.min_lock_duration,
-            max: whitelist.max_lock_duration,
-        })?;
+    let lock_duration =
+        unlock_time
+            .checked_sub(current_time)
+            .ok_or(ContractError::InvalidUnlockTime {
+                min: whitelist.min_lock_duration,
+                max: whitelist.max_lock_duration,
+            })?;
 
     if lock_duration < whitelist.min_lock_duration || lock_duration > whitelist.max_lock_duration {
         return Err(ContractError::InvalidUnlockTime {
@@ -181,13 +188,9 @@ fn execute_lock_lp(
     USER_LOCKERS.save(deps.storage, (&sender, locker_id), &true)?;
 
     // Update total locked
-    TOTAL_LOCKED.update(
-        deps.storage,
-        &lp_token,
-        |total| -> StdResult<_> {
-            Ok(total.unwrap_or_default().checked_add(amount)?)
-        },
-    )?;
+    TOTAL_LOCKED.update(deps.storage, &lp_token, |total| -> StdResult<_> {
+        Ok(total.unwrap_or_default().checked_add(amount)?)
+    })?;
 
     Ok(Response::new()
         .add_attribute("action", "lock_lp")
@@ -222,13 +225,9 @@ fn execute_unlock_lp(
     USER_LOCKERS.remove(deps.storage, (&locker.owner, locker_id));
 
     // Update total locked
-    TOTAL_LOCKED.update(
-        deps.storage,
-        &locker.lp_token,
-        |total| -> StdResult<_> {
-            Ok(total.unwrap_or_default().checked_sub(locker.amount)?)
-        },
-    )?;
+    TOTAL_LOCKED.update(deps.storage, &locker.lp_token, |total| -> StdResult<_> {
+        Ok(total.unwrap_or_default().checked_sub(locker.amount)?)
+    })?;
 
     // Transfer LP tokens back
     let transfer_msg = WasmMsg::Execute {
@@ -326,7 +325,8 @@ fn execute_emergency_unlock(
         return Err(ContractError::NotOwner {});
     }
 
-    let execute_at = locker.emergency_unlock_requested
+    let execute_at = locker
+        .emergency_unlock_requested
         .ok_or(ContractError::EmergencyNotRequested {})?;
 
     if env.block.time.seconds() < execute_at {
@@ -338,13 +338,9 @@ fn execute_emergency_unlock(
     USER_LOCKERS.remove(deps.storage, (&locker.owner, locker_id));
 
     // Update total locked
-    TOTAL_LOCKED.update(
-        deps.storage,
-        &locker.lp_token,
-        |total| -> StdResult<_> {
-            Ok(total.unwrap_or_default().checked_sub(locker.amount)?)
-        },
-    )?;
+    TOTAL_LOCKED.update(deps.storage, &locker.lp_token, |total| -> StdResult<_> {
+        Ok(total.unwrap_or_default().checked_sub(locker.amount)?)
+    })?;
 
     // Transfer LP tokens back
     let transfer_msg = WasmMsg::Execute {
@@ -478,9 +474,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Config {} => to_json_binary(&query_config(deps)?),
         QueryMsg::Locker { locker_id } => to_json_binary(&query_locker(deps, locker_id)?),
-        QueryMsg::LockersByOwner { owner, start_after, limit } => {
-            to_json_binary(&query_lockers_by_owner(deps, owner, start_after, limit)?)
-        }
+        QueryMsg::LockersByOwner {
+            owner,
+            start_after,
+            limit,
+        } => to_json_binary(&query_lockers_by_owner(deps, owner, start_after, limit)?),
         QueryMsg::WhitelistedLP { lp_token } => {
             to_json_binary(&query_whitelisted_lp(deps, lp_token)?)
         }
@@ -536,8 +534,10 @@ fn query_lockers_by_owner(
         .take(limit)
         .filter_map(|item| {
             item.ok().and_then(|(locker_id, _)| {
-                LOCKERS.load(deps.storage, locker_id).ok().map(|locker| {
-                    LockerResponse {
+                LOCKERS
+                    .load(deps.storage, locker_id)
+                    .ok()
+                    .map(|locker| LockerResponse {
                         id: locker.id,
                         owner: locker.owner,
                         lp_token: locker.lp_token,
@@ -547,8 +547,7 @@ fn query_lockers_by_owner(
                         extended_count: locker.extended_count,
                         emergency_unlock_requested: locker.emergency_unlock_requested,
                         metadata: locker.metadata,
-                    }
-                })
+                    })
             })
         })
         .collect();
@@ -559,7 +558,7 @@ fn query_lockers_by_owner(
 fn query_whitelisted_lp(deps: Deps, lp_token: String) -> StdResult<WhitelistedLPResponse> {
     let lp_addr = deps.api.addr_validate(&lp_token)?;
     let whitelist = WHITELISTED_LPS.load(deps.storage, &lp_addr)?;
-    
+
     Ok(WhitelistedLPResponse {
         lp_token: whitelist.lp_token,
         min_lock_duration: whitelist.min_lock_duration,
@@ -575,7 +574,9 @@ fn query_all_whitelisted_lps(
     limit: Option<u32>,
 ) -> StdResult<Vec<WhitelistedLPResponse>> {
     let limit = limit.unwrap_or(10).min(30) as usize;
-    let start_addr = start_after.map(|s| deps.api.addr_validate(&s)).transpose()?;
+    let start_addr = start_after
+        .map(|s| deps.api.addr_validate(&s))
+        .transpose()?;
     let start = start_addr.as_ref().map(Bound::exclusive);
 
     WHITELISTED_LPS
@@ -596,8 +597,10 @@ fn query_all_whitelisted_lps(
 
 fn query_total_locked(deps: Deps, lp_token: String) -> StdResult<TotalLockedResponse> {
     let lp_addr = deps.api.addr_validate(&lp_token)?;
-    let total = TOTAL_LOCKED.may_load(deps.storage, &lp_addr)?.unwrap_or_default();
-    
+    let total = TOTAL_LOCKED
+        .may_load(deps.storage, &lp_addr)?
+        .unwrap_or_default();
+
     Ok(TotalLockedResponse {
         lp_token: lp_addr,
         total_amount: total,
@@ -605,13 +608,9 @@ fn query_total_locked(deps: Deps, lp_token: String) -> StdResult<TotalLockedResp
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(
-    deps: DepsMut,
-    _env: Env,
-    msg: MigrateMsg,
-) -> Result<Response, ContractError> {
+pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
     let version = cw2::get_contract_version(deps.storage)?;
-    
+
     if version.contract != CONTRACT_NAME {
         return Err(ContractError::InvalidMigration {});
     }
@@ -619,7 +618,7 @@ pub fn migrate(
     match msg {
         MigrateMsg::V1ToV2 { reward_controller } => {
             let mut config = CONFIG.load(deps.storage)?;
-            
+
             if let Some(addr) = reward_controller {
                 config.reward_controller = Some(deps.api.addr_validate(&addr)?);
                 CONFIG.save(deps.storage, &config)?;

@@ -17,17 +17,16 @@ jobs:
     name: Test Contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: wasm32-unknown-unknown
-          override: true
-      
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+
       - name: Cache Cargo
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -36,13 +35,17 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Run LP Locker Tests
         working-directory: contracts/lp-locker
         run: cargo test --verbose
-      
+
       - name: Run Reward Controller Tests
         working-directory: contracts/reward-controller
+        run: cargo test --verbose
+
+      - name: Run PRC20 Staking Tests
+        working-directory: contracts/prc20-staking
         run: cargo test --verbose
 
   build:
@@ -50,22 +53,20 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: wasm32-unknown-unknown
-          override: true
-      
+          targets: wasm32-unknown-unknown
+
       - name: Install wasm-opt
         run: |
           sudo apt-get update
           sudo apt-get install -y binaryen
-      
+
       - name: Cache Cargo
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -74,31 +75,32 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Build Contracts
         run: chmod +x build_all.sh && ./build_all.sh
-      
+
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wasm-contracts
           path: |
             artifacts/*.wasm
             artifacts/*.sha256
-      
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/*.wasm
             artifacts/*.sha256
           body: |
-            ## LP Platform v2.0 Release
+            ## Paxi Network DeFi Release
             
             ### Contracts
             - `lp_locker.wasm` - LP Locker Contract
             - `reward_controller.wasm` - Reward Controller Contract
+            - `prc20_staking.wasm` - PRC20 Staking Contract
             
             ### Checksums
             Verify integrity using `.sha256` files
@@ -112,27 +114,33 @@ jobs:
     name: Lint & Format Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           components: clippy, rustfmt
-          override: true
-      
+
       - name: Run Clippy (LP Locker)
         working-directory: contracts/lp-locker
         run: cargo clippy -- -D warnings
-      
+
       - name: Run Clippy (Reward Controller)
         working-directory: contracts/reward-controller
         run: cargo clippy -- -D warnings
-      
+
+      - name: Run Clippy (PRC20 Staking)
+        working-directory: contracts/prc20-staking
+        run: cargo clippy -- -D warnings
+
       - name: Check Formatting (LP Locker)
         working-directory: contracts/lp-locker
         run: cargo fmt -- --check
-      
+
       - name: Check Formatting (Reward Controller)
         working-directory: contracts/reward-controller
+        run: cargo fmt -- --check
+
+      - name: Check Formatting (PRC20 Staking)
+        working-directory: contracts/prc20-staking
         run: cargo fmt -- --check
