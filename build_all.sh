@@ -96,7 +96,8 @@ for contract in "${CONTRACTS[@]}"; do
     # Step 2: Compile to WASM
     echo -e "${CYAN}[2/4] Compiling to WASM...${NC}"
     # Target MVP CPU and disable extensions to ensure compatibility with Paxi Network
-    export RUSTFLAGS="-C target-cpu=mvp -C target-feature=-bulk-memory,-mutable-globals,-sign-ext,-nontrapping-fptoint -C link-arg=-s"
+    # We explicitly disable bulk-memory and sign-ext at the compiler level.
+    export RUSTFLAGS="-C target-cpu=mvp -C target-feature=-bulk-memory,-sign-ext -C link-arg=-s"
     cargo build --release --target wasm32-unknown-unknown --quiet
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ Compilation successful${NC}"
@@ -109,8 +110,14 @@ for contract in "${CONTRACTS[@]}"; do
     # Step 3: Optimize with wasm-opt
     if [ -z "$SKIP_OPT" ]; then
         echo -e "${CYAN}[3/4] Optimizing with wasm-opt...${NC}"
-        # Use strictly MVP features for maximum compatibility
-        wasm-opt -Oz --mvp-features \
+        # Even if the compiler is told not to use them, some dependencies might trigger them.
+        # We use wasm-opt lowering passes to convert any bulk-memory or sign-ext opcodes back to MVP.
+        # --all-features allows wasm-opt to read the input even if it contains non-MVP opcodes.
+        wasm-opt -Oz \
+            --all-features \
+            --signext-lowering \
+            --bulkmemory-lowering \
+            --strip-debug \
             "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" \
             -o "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm"
         
