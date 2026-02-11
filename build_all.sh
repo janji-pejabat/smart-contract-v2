@@ -10,9 +10,6 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-if [ -t 1 ] && [ -n "$TERM" ]; then
-    clear
-fi
 echo -e "${GREEN}=========================================="
 echo "  LP PLATFORM v2.0.0 - BUILD SUITE"
 echo "  Locker + Reward Controller"
