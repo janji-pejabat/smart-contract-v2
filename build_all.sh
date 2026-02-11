@@ -10,10 +10,14 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-clear
+# Clear screen only if in TTY
+if [ -t 1 ]; then
+    clear
+fi
+
 echo -e "${GREEN}=========================================="
-echo "  LP PLATFORM v2.0.0 - BUILD SUITE"
-echo "  Locker + Reward Controller"
+echo "  PAXI NETWORK DEFI - BUILD SUITE"
+echo "  Locker + Rewards + Staking"
 echo "==========================================${NC}"
 echo ""
 
@@ -21,6 +25,7 @@ echo ""
 CONTRACTS=(
     "lp-locker"
     "reward-controller"
+    "prc20-staking"
 )
 
 # Validate project structure
@@ -72,9 +77,14 @@ for contract in "${CONTRACTS[@]}"; do
     if cargo test --quiet; then
         echo -e "${GREEN}✓ Tests passed${NC}"
     else
-        echo -e "${YELLOW}⚠ Some tests failed - continue anyway? (y/n)${NC}"
-        read -r response
-        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+        if [ -t 1 ]; then
+            echo -e "${YELLOW}⚠ Some tests failed - continue anyway? (y/n)${NC}"
+            read -r response
+            if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+        else
+            echo -e "${RED}✗ Tests failed!${NC}"
             exit 1
         fi
     fi
@@ -94,7 +104,7 @@ for contract in "${CONTRACTS[@]}"; do
     # Step 3: Optimize with wasm-opt
     if [ -z "$SKIP_OPT" ]; then
         echo -e "${CYAN}[3/4] Optimizing with wasm-opt...${NC}"
-        wasm-opt -Oz --enable-sign-ext \
+        wasm-opt -Oz --enable-sign-ext --enable-bulk-memory \
             "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" \
             -o "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm"
         
@@ -146,9 +156,10 @@ echo -e "${YELLOW}Next Steps:${NC}"
 echo "  1. Deploy to testnet for testing (minimum 2 weeks)"
 echo "  2. Deploy lp-locker first, get contract address"
 echo "  3. Deploy reward-controller with lp-locker address"
-echo "  4. Configure both contracts (whitelist LP, create pools)"
-echo "  5. Test complete user flow"
-echo "  6. Deploy to mainnet"
+echo "  4. Deploy prc20-staking"
+echo "  5. Configure contracts (whitelist LP, create pools, create rooms)"
+echo "  6. Test complete user flow"
+echo "  7. Deploy to mainnet"
 echo ""
 echo -e "${CYAN}Deployment Commands:${NC}"
 echo "  # Store code"
