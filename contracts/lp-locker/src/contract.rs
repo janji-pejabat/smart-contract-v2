@@ -841,7 +841,8 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
                 pub next_locker_id: u64,
             }
 
-            let old_config_item: cw_storage_plus::Item<ConfigV1> = cw_storage_plus::Item::new("config");
+            let old_config_item: cw_storage_plus::Item<ConfigV1> =
+                cw_storage_plus::Item::new("config");
             let old_config = old_config_item.load(deps.storage)?;
             let mut new_config = Config {
                 admin: old_config.admin,
@@ -869,23 +870,23 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
                 pub bonus_multiplier: Decimal,
             }
 
-            let old_lp_map: cw_storage_plus::Map<&Addr, WhitelistedLPV1> = cw_storage_plus::Map::new("whitelisted_lps");
+            let old_lp_map: cw_storage_plus::Map<&Addr, WhitelistedLPV1> =
+                cw_storage_plus::Map::new("whitelisted_lps");
             let entries: Vec<(Addr, WhitelistedLPV1)> = old_lp_map
                 .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
                 .collect::<StdResult<Vec<_>>>()?;
 
             for (lp_token, old_lp) in entries {
-
                 // Query metadata from CW20 token
-                let token_info: cw20::TokenInfoResponse = deps.querier.query_wasm_smart(
-                    &lp_token,
-                    &cw20::Cw20QueryMsg::TokenInfo {},
-                ).unwrap_or(cw20::TokenInfoResponse {
-                    name: "Unknown LP".to_string(),
-                    symbol: "ULP".to_string(),
-                    decimals: 6,
-                    total_supply: Uint128::zero(),
-                });
+                let token_info: cw20::TokenInfoResponse = deps
+                    .querier
+                    .query_wasm_smart(&lp_token, &cw20::Cw20QueryMsg::TokenInfo {})
+                    .unwrap_or(cw20::TokenInfoResponse {
+                        name: "Unknown LP".to_string(),
+                        symbol: "ULP".to_string(),
+                        decimals: 6,
+                        total_supply: Uint128::zero(),
+                    });
 
                 let new_lp = WhitelistedLP {
                     lp_token: old_lp.lp_token,
@@ -895,7 +896,9 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
                     max_lock_duration: old_lp.max_lock_duration,
                     enabled: old_lp.enabled,
                     bonus_multiplier: old_lp.bonus_multiplier,
-                    total_locked_all_time: TOTAL_LOCKED.may_load(deps.storage, &lp_token)?.unwrap_or_default(),
+                    total_locked_all_time: TOTAL_LOCKED
+                        .may_load(deps.storage, &lp_token)?
+                        .unwrap_or_default(),
                     total_unlocked_all_time: Uint128::zero(),
                     user_count: 0, // Cannot easily backfill without scanning all lockers
                 };

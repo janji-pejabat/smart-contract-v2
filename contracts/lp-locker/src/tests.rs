@@ -234,10 +234,10 @@ mod tests {
 
     #[test]
     fn test_migration_v1_to_v2() {
+        use crate::contract::{migrate, query};
+        use crate::msg::{ConfigResponse, MigrateMsg, QueryMsg, WhitelistedLPResponse};
         use cosmwasm_std::{Addr, Decimal};
         use cw_storage_plus::{Item, Map};
-        use crate::msg::{MigrateMsg, QueryMsg, ConfigResponse, WhitelistedLPResponse};
-        use crate::contract::{query, migrate};
 
         let mut deps = mock_dependencies();
         let env = mock_env();
@@ -283,19 +283,44 @@ mod tests {
         };
 
         let lp_map: Map<&Addr, WhitelistedLPV1> = Map::new("whitelisted_lps");
-        lp_map.save(deps.as_mut().storage, &Addr::unchecked("lp_token"), &lp_v1).unwrap();
+        lp_map
+            .save(deps.as_mut().storage, &Addr::unchecked("lp_token"), &lp_v1)
+            .unwrap();
 
         cw2::set_contract_version(deps.as_mut().storage, "crates.io:lp-locker", "1.0.0").unwrap();
 
         // 2. Run Migration
-        migrate(deps.as_mut(), env.clone(), MigrateMsg::V1ToV2 { reward_controller: Some("new_reward".to_string()) }).unwrap();
+        migrate(
+            deps.as_mut(),
+            env.clone(),
+            MigrateMsg::V1ToV2 {
+                reward_controller: Some("new_reward".to_string()),
+            },
+        )
+        .unwrap();
 
         // 3. Verify V2 state via queries
-        let config: ConfigResponse = cosmwasm_std::from_json(&query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap()).unwrap();
+        let config: ConfigResponse = cosmwasm_std::from_json(
+            &query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap(),
+        )
+        .unwrap();
         assert_eq!(config.batch_limit, 20);
-        assert_eq!(config.reward_controller.unwrap(), Addr::unchecked("new_reward"));
+        assert_eq!(
+            config.reward_controller.unwrap(),
+            Addr::unchecked("new_reward")
+        );
 
-        let lp: WhitelistedLPResponse = cosmwasm_std::from_json(&query(deps.as_ref(), env.clone(), QueryMsg::WhitelistedLP { lp_token: "lp_token".to_string() }).unwrap()).unwrap();
+        let lp: WhitelistedLPResponse = cosmwasm_std::from_json(
+            &query(
+                deps.as_ref(),
+                env.clone(),
+                QueryMsg::WhitelistedLP {
+                    lp_token: "lp_token".to_string(),
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
         // Since we didn't mock the CW20 query, it should fall back to "Unknown LP"
         assert_eq!(lp.name, "Unknown LP");
     }

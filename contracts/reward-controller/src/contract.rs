@@ -59,7 +59,9 @@ pub fn execute(
     match msg {
         ExecuteMsg::Receive(msg) => execute_receive(deps, env, info, msg),
         ExecuteMsg::LockerHook(hook_msg) => execute_locker_hook(deps, env, info, hook_msg),
-        ExecuteMsg::RegisterStake { locker_id } => execute_register_stake(deps, env, info, locker_id),
+        ExecuteMsg::RegisterStake { locker_id } => {
+            execute_register_stake(deps, env, info, locker_id)
+        }
         ExecuteMsg::ClaimRewards {
             locker_id,
             pool_ids,
@@ -1002,7 +1004,8 @@ pub fn migrate(
         pub next_pool_id: u64,
     }
 
-    let old_config_item: cw_storage_plus::Item<RewardConfigV1> = cw_storage_plus::Item::new("config");
+    let old_config_item: cw_storage_plus::Item<RewardConfigV1> =
+        cw_storage_plus::Item::new("config");
     let old_config = old_config_item.load(deps.storage)?;
     let new_config = RewardConfig {
         admin: old_config.admin,

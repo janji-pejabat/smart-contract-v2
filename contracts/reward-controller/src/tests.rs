@@ -539,10 +539,10 @@ mod tests {
 
     #[test]
     fn test_migration_v1_to_v2() {
+        use crate::contract::{migrate, query};
+        use crate::msg::{ConfigResponse, MigrateMsg, QueryMsg};
         use cosmwasm_std::Addr;
         use cw_storage_plus::Item;
-        use crate::msg::{MigrateMsg, QueryMsg, ConfigResponse};
-        use crate::contract::{query, migrate};
 
         let mut deps = mock_dependencies();
         let env = mock_env();
@@ -567,22 +567,30 @@ mod tests {
         let config_item: Item<RewardConfigV1> = Item::new("config");
         config_item.save(deps.as_mut().storage, &v1_config).unwrap();
 
-        cw2::set_contract_version(deps.as_mut().storage, "crates.io:reward-controller", "1.0.0").unwrap();
+        cw2::set_contract_version(
+            deps.as_mut().storage,
+            "crates.io:reward-controller",
+            "1.0.0",
+        )
+        .unwrap();
 
         // 2. Run Migration
         migrate(deps.as_mut(), env.clone(), MigrateMsg::V1ToV2 {}).unwrap();
 
         // 3. Verify V2 state
-        let config: ConfigResponse = cosmwasm_std::from_json(&query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap()).unwrap();
+        let config: ConfigResponse = cosmwasm_std::from_json(
+            &query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap(),
+        )
+        .unwrap();
         assert_eq!(config.referral_commission_bps, 500);
         assert_eq!(config.batch_limit, 20);
     }
 
     #[test]
     fn test_robust_hooks_and_register_stake() {
-        use cosmwasm_std::{Addr, Uint128, to_json_binary};
-        use crate::msg::{ExecuteMsg, LockerHookMsg, QueryMsg, UserStakeResponse};
         use crate::contract::{execute, instantiate, query};
+        use crate::msg::{ExecuteMsg, LockerHookMsg, QueryMsg, UserStakeResponse};
+        use cosmwasm_std::{to_json_binary, Addr, Uint128};
 
         let mut deps = mock_dependencies();
         let env = mock_env();
@@ -596,14 +604,21 @@ mod tests {
                 lp_locker_contract: "locker".to_string(),
                 claim_interval: None,
             },
-        ).unwrap();
+        )
+        .unwrap();
 
         // 1. Test OnUnlock with missing stake (should NOT fail)
         let unlock_hook = ExecuteMsg::LockerHook(LockerHookMsg::OnUnlock {
             locker_id: 99,
             owner: "user".to_string(),
         });
-        let res = execute(deps.as_mut(), env.clone(), mock_info("locker", &[]), unlock_hook).unwrap();
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("locker", &[]),
+            unlock_hook,
+        )
+        .unwrap();
         assert_eq!(res.attributes[1].value, "on_unlock_skipped");
 
         // 2. Test RegisterStake
@@ -618,13 +633,16 @@ mod tests {
         }
 
         deps.querier.update_wasm(|_query| {
-            cosmwasm_std::SystemResult::Ok(cosmwasm_std::ContractResult::Ok(to_json_binary(&MockLockerResponse {
-                owner: Addr::unchecked("user"),
-                lp_token: Addr::unchecked("lp_token"),
-                amount: Uint128::new(1000),
-                locked_at: 1000,
-                unlock_time: 2000,
-            }).unwrap()))
+            cosmwasm_std::SystemResult::Ok(cosmwasm_std::ContractResult::Ok(
+                to_json_binary(&MockLockerResponse {
+                    owner: Addr::unchecked("user"),
+                    lp_token: Addr::unchecked("lp_token"),
+                    amount: Uint128::new(1000),
+                    locked_at: 1000,
+                    unlock_time: 2000,
+                })
+                .unwrap(),
+            ))
         });
 
         execute(
@@ -632,14 +650,22 @@ mod tests {
             env.clone(),
             mock_info("user", &[]),
             ExecuteMsg::RegisterStake { locker_id: 1 },
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify stake
-        let res: UserStakeResponse = cosmwasm_std::from_json(&query(
-            deps.as_ref(),
-            env.clone(),
-            QueryMsg::UserStake { user: "user".to_string(), locker_id: 1 }
-        ).unwrap()).unwrap();
+        let res: UserStakeResponse = cosmwasm_std::from_json(
+            &query(
+                deps.as_ref(),
+                env.clone(),
+                QueryMsg::UserStake {
+                    user: "user".to_string(),
+                    locker_id: 1,
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
         assert_eq!(res.lp_amount, Uint128::new(1000));
     }
 }

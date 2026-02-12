@@ -50,16 +50,19 @@ for contract in "${CONTRACTS[@]}"; do
         WASM_OPT_FLAGS="-Oz --strip-debug --strip-producers"
 
         # Enable features in the parser so we can read the compiler output
+        # We need to enable them even if we intend to lower them later
         if echo "$WASM_OPT_HELP" | grep -q "all-features"; then
             WASM_OPT_FLAGS="$WASM_OPT_FLAGS --all-features"
-        else
-            # Individual enable flags for parsing
-            for feat in "bulk-memory" "sign-ext" "mutable-globals"; do
-                if echo "$WASM_OPT_HELP" | grep -q "enable-$feat"; then
-                    WASM_OPT_FLAGS="$WASM_OPT_FLAGS --enable-$feat"
-                fi
-            done
         fi
+
+        # Individual enable flags for parsing - be aggressive here
+        for feat in "bulk-memory" "sign-ext" "mutable-globals" "nontrapping-fptoint"; do
+            if echo "$WASM_OPT_HELP" | grep -q "enable-$feat"; then
+                WASM_OPT_FLAGS="$WASM_OPT_FLAGS --enable-$feat"
+            elif echo "$WASM_OPT_HELP" | grep -q "${feat//-/}"; then
+                 WASM_OPT_FLAGS="$WASM_OPT_FLAGS --enable-${feat//-/}"
+            fi
+        done
 
         # FORCE lowering of any modern opcodes back to MVP loops/sequences
         # We try multiple variations of pass names to ensure compatibility with different wasm-opt versions

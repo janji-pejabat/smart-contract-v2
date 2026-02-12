@@ -24,7 +24,9 @@ pub enum ExecuteMsg {
     LockerHook(LockerHookMsg),
 
     /// Register a stake from an existing locker (for lockers created before this controller)
-    RegisterStake { locker_id: u64 },
+    RegisterStake {
+        locker_id: u64,
+    },
 
     ClaimRewards {
         locker_id: u64,
