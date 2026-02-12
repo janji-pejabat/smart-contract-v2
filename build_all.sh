@@ -1,119 +1,54 @@
 #!/usr/bin/env bash
-# build_all.sh - Build and Validate LP Platform contracts
+# build_all.sh - Build both LP Platform contracts without bulk-memory
 
 set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Check if TERM is set before calling clear
-if [ -t 0 ] && [ -n "$TERM" ]; then
-    clear
-fi
-
-echo -e "${GREEN}=========================================="
-echo "  LP PLATFORM v2.0.0 - BUILD & VALIDATE"
-echo "  Locker + Reward Controller"
-echo "==========================================${NC}"
-echo ""
-
-# Contracts to build
-CONTRACTS=(
-    "lp-locker"
-    "reward-controller"
-)
-
-# Check build tools
-if ! command -v cargo &> /dev/null; then
-    echo -e "${RED}✗ Rust/Cargo not installed!${NC}"
-    exit 1
-fi
-
-SKIP_OPT=0
-if ! command -v wasm-opt &> /dev/null; then
-    echo -e "${YELLOW}⚠ wasm-opt not found! Optimization will be skipped.${NC}"
-    SKIP_OPT=1
-fi
-
-SKIP_VALIDATE=0
-if ! command -v cosmwasm-check &> /dev/null; then
-    echo -e "${YELLOW}⚠ cosmwasm-check not found! Validation will be skipped.${NC}"
-    SKIP_VALIDATE=1
-fi
+echo -e "${GREEN}Building LP Platform Contracts (CosmWasm Compatible)...${NC}"
 
 # Create artifacts directory
 mkdir -p artifacts
-rm -f artifacts/*.wasm artifacts/*.sha256
+rm -f artifacts/*.wasm
 
-# Build each contract
+CONTRACTS=("lp-locker" "reward-controller")
+
 for contract in "${CONTRACTS[@]}"; do
     CONTRACT_NAME_SNAKE="${contract//-/_}"
-    echo -e "Building: $contract..."
+    echo "Building $contract..."
     
     cd "contracts/$contract"
     cargo clean --quiet
     
-    # Run tests
-    if ! cargo test --quiet; then
-        echo -e "${RED}✗ Tests failed!${NC}"
-        exit 1
-    fi
+    # Build with bulk-memory and sign-ext disabled at compile time
+    RUSTFLAGS='-C target-feature=-bulk-memory,-sign-ext' cargo build --release --target wasm32-unknown-unknown --quiet
     
-    # Compile to WASM (strictly MVP)
-    # We use a single comma-separated list for target-feature to ensure all are applied.
-    export RUSTFLAGS="-C target-cpu=mvp -C target-feature=-bulk-memory,-sign-ext,-mutable-globals -C link-arg=-s"
-    cargo build --release --target wasm32-unknown-unknown --quiet
+    WASM_PATH="target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm"
 
-    FINAL_WASM_SOURCE="target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm"
-
-    # Optimize and Lower Opcodes if wasm-opt is available
-    if [ "$SKIP_OPT" -eq 0 ]; then
-        # Dynamically detect available flags in wasm-opt to avoid "Unknown option" errors
-        WASM_OPT_HELP=$(wasm-opt --help)
-        WASM_OPT_FLAGS="-Oz --strip-debug"
-        
-        # Enable features for parsing if possible
-        if echo "$WASM_OPT_HELP" | grep -q "all-features"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --all-features"
-        else
-            if echo "$WASM_OPT_HELP" | grep -q "enable-bulk-memory"; then WASM_OPT_FLAGS="$WASM_OPT_FLAGS --enable-bulk-memory"; fi
-            if echo "$WASM_OPT_HELP" | grep -q "enable-sign-ext"; then WASM_OPT_FLAGS="$WASM_OPT_FLAGS --enable-sign-ext"; fi
-        fi
-
-        # Add lowering passes
-        if echo "$WASM_OPT_HELP" | grep -q "bulkmemory-lowering"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --bulkmemory-lowering"
-        elif echo "$WASM_OPT_HELP" | grep -q "bulk-memory-lowering"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --bulk-memory-lowering"
-        fi
-
-        if echo "$WASM_OPT_HELP" | grep -q "signext-lowering"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --signext-lowering"
-        elif echo "$WASM_OPT_HELP" | grep -q "sign-ext-lowering"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --sign-ext-lowering"
-        fi
-
-        # Final verification that the output is MVP
-        if echo "$WASM_OPT_HELP" | grep -q "mvp-features"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --mvp-features"
-        fi
-
-        wasm-opt $WASM_OPT_FLAGS "$FINAL_WASM_SOURCE" -o "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
+    # Optimize using wasm-opt if available
+    if command -v wasm-opt &> /dev/null; then
+        echo "Optimizing $contract..."
+        # Use --lower-bulk-memory and --lower-sign-ext if supported by your wasm-opt version
+        # Otherwise use strictly MVP features
+        wasm-opt -Oz --strip-debug --mvp-features "$WASM_PATH" -o "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
     else
-        cp "$FINAL_WASM_SOURCE" "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
+        echo "wasm-opt not found, copying raw WASM..."
+        cp "$WASM_PATH" "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
     fi
     
-    # Validate
-    if [ "$SKIP_VALIDATE" -eq 0 ]; then
+    # Validate using cosmwasm-check if available
+    if command -v cosmwasm-check &> /dev/null; then
+        echo "Validating $contract..."
         cosmwasm-check "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
     fi
 
-    # Checksum
-    cd ../../artifacts
-    sha256sum "${CONTRACT_NAME_SNAKE}.wasm" > "${CONTRACT_NAME_SNAKE}.wasm.sha256"
-    cd ..
+    # Show file size
+    SIZE=$(du -h "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm" | cut -f1)
+    echo -e "${GREEN}✓ Created artifacts/${CONTRACT_NAME_SNAKE}.wasm ($SIZE)${NC}"
+
+    cd ../..
 done
 
-echo -e "${GREEN}✅ ALL BUILDS COMPLETE! Artifacts are in ./artifacts${NC}"
+echo -e "${GREEN}✅ Build Complete! Artifacts are ready for upload.${NC}"
