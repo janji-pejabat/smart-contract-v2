@@ -55,10 +55,12 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       
-      - name: Install wasm-opt
+      - name: Install wasm-opt (Latest)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y binaryen
+          wget https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz
+          tar -xzf binaryen-version_116-x86_64-linux.tar.gz
+          sudo cp binaryen-version_116/bin/wasm-opt /usr/local/bin/
+          wasm-opt --version
       
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -78,26 +80,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wasm-contracts
-          path: |
-            artifacts/*.wasm
-            artifacts/*.sha256
+          path: artifacts/*.wasm
       
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/*.wasm
-            artifacts/*.sha256
+          files: artifacts/*.wasm
           body: |
             ## LP Platform v2.0 Release
             
             ### Contracts
             - `lp_locker.wasm` - LP Locker Contract
             - `reward_controller.wasm` - Reward Controller Contract
-            
-            ### Checksums
-            Verify integrity using `.sha256` files
             
             ### Deployment
             See [README.md](README.md) for deployment instructions
