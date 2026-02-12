@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | Paxi LP Locker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://mainnet-api.paxinet.io/resources/js/paxi-cosmjs.umd.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/styles.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .btn-primary { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); transition: all 0.3s ease; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- Navbar -->
+    <nav class="border-b border-slate-800 glass sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center space-x-3 text-blue-500">
+                    <i class="fas fa-shield-alt text-2xl"></i>
+                    <span class="text-xl font-bold tracking-tight text-white">Admin <span class="text-blue-500">Control</span></span>
+                </div>
+                <div class="hidden md:flex space-x-8">
+                    <a href="index.html" class="text-slate-300 hover:text-white transition">DApp View</a>
+                    <a href="#" class="text-white font-bold border-b-2 border-blue-500">Platform Settings</a>
+                </div>
+                <button id="connectBtn" class="btn-primary px-6 py-2 rounded-full font-semibold text-sm">
+                    Connect Admin
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Whitelist Tool -->
+            <div class="lg:col-span-1">
+                <div class="glass p-8 rounded-3xl sticky top-24">
+                    <h2 class="text-2xl font-bold mb-6">Whitelist LP Token</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-2">LP Token Address</label>
+                            <input type="text" id="whitelistTokenAddr" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 focus:border-blue-500 outline-none transition" placeholder="paxi1...">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm text-slate-400 mb-2">Name</label>
+                                <input type="text" id="whitelistTokenName" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 focus:border-blue-500 outline-none transition" placeholder="PAXI-USDT LP">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-slate-400 mb-2">Symbol</label>
+                                <input type="text" id="whitelistTokenSymbol" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 focus:border-blue-500 outline-none transition" placeholder="LPT">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-2">Min Lock Duration (Days)</label>
+                            <input type="number" id="minLockDays" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 focus:border-blue-500 outline-none transition" value="7">
+                        </div>
+                        <div>
+                            <label class="block text-sm text-slate-400 mb-2">Max Lock Duration (Days)</label>
+                            <input type="number" id="maxLockDays" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 focus:border-blue-500 outline-none transition" value="365">
+                        </div>
+                        <button id="whitelistBtn" class="w-full btn-primary py-4 rounded-xl font-bold mt-4">
+                            Whitelist Token
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Management Section -->
+            <div class="lg:col-span-2 space-y-8">
+                <!-- Global Config -->
+                <div class="glass p-8 rounded-3xl">
+                    <h2 class="text-2xl font-bold mb-6">Platform Configuration</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+                            <label class="block text-sm text-slate-400 mb-2">Platform Fee (BPS)</label>
+                            <div class="flex space-x-2">
+                                <input type="number" id="platformFee" class="bg-transparent border border-slate-700 rounded-xl px-4 py-2 w-full outline-none" value="0">
+                                <button class="btn-primary px-4 py-2 rounded-xl text-sm font-bold">Update</button>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-2">100 BPS = 1% fee. Max 5%.</p>
+                        </div>
+                        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+                            <label class="block text-sm text-slate-400 mb-2">Emergency Delay (Seconds)</label>
+                            <div class="flex space-x-2">
+                                <input type="number" id="emergencyDelay" class="bg-transparent border border-slate-700 rounded-xl px-4 py-2 w-full outline-none" value="259200">
+                                <button class="btn-primary px-4 py-2 rounded-xl text-sm font-bold">Update</button>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-2">Default: 259200 (3 days)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Whitelisted Assets -->
+                <div class="glass p-8 rounded-3xl">
+                    <h2 class="text-2xl font-bold mb-6">Whitelisted LP Assets</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr class="text-slate-500 text-sm border-b border-slate-800">
+                                    <th class="pb-4 font-medium">Asset</th>
+                                    <th class="pb-4 font-medium">Min/Max Lock</th>
+                                    <th class="pb-4 font-medium">Stats</th>
+                                    <th class="pb-4 font-medium">Status</th>
+                                    <th class="pb-4 font-medium">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminAssetsList">
+                                <tr>
+                                    <td colspan="5" class="py-12 text-center text-slate-500">Loading assets...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="assets/js/app.js"></script>
+</body>
+</html>

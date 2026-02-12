@@ -1,0 +1,19 @@
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+/* Transitions */
+.transition-all { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Card Hover effects */
+.glass { transition: transform 0.3s ease, border 0.3s ease; }
+.glass:hover { border-color: rgba(255, 255, 255, 0.2); }
+
+/* Animation for loading */
+@keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+.loading-pulse { animation: pulse-soft 2s infinite ease-in-out; }
