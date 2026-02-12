@@ -905,6 +905,41 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
                 WHITELISTED_LPS.save(deps.storage, &lp_token, &new_lp)?;
             }
 
+            // 3. Migrate Lockers
+            // V1 Locker didn't have metadata field
+            #[derive(serde::Deserialize, serde::Serialize)]
+            pub struct LockerV1 {
+                pub id: u64,
+                pub owner: Addr,
+                pub lp_token: Addr,
+                pub amount: Uint128,
+                pub locked_at: u64,
+                pub unlock_time: u64,
+                pub extended_count: u8,
+                pub emergency_unlock_requested: Option<u64>,
+            }
+
+            let locker_ids: Vec<u64> = LOCKERS
+                .keys(deps.storage, None, None, cosmwasm_std::Order::Ascending)
+                .collect::<StdResult<Vec<_>>>()?;
+
+            let old_locker_map: cw_storage_plus::Map<u64, LockerV1> = cw_storage_plus::Map::new("lockers");
+            for id in locker_ids {
+                let old_locker = old_locker_map.load(deps.storage, id)?;
+                let new_locker = Locker {
+                    id: old_locker.id,
+                    owner: old_locker.owner,
+                    lp_token: old_locker.lp_token,
+                    amount: old_locker.amount,
+                    locked_at: old_locker.locked_at,
+                    unlock_time: old_locker.unlock_time,
+                    extended_count: old_locker.extended_count,
+                    emergency_unlock_requested: old_locker.emergency_unlock_requested,
+                    metadata: None,
+                };
+                LOCKERS.save(deps.storage, id, &new_locker)?;
+            }
+
             cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
             Ok(Response::new()
