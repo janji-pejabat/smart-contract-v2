@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# build_all.sh - Final definitive fix for Paxi Network WASM compatibility
+
 set -e
 
 RED='\033[0;31m'
@@ -9,11 +11,13 @@ NC='\033[0m'
 
 echo -e "${GREEN}Building LP Platform Contracts (STRICT MVP COMPATIBILITY)...${NC}"
 
+# Check build tools
 if ! command -v cargo &> /dev/null; then
     echo -e "${RED}✗ Rust/Cargo not installed!${NC}"
     exit 1
 fi
 
+# Create artifacts directory
 mkdir -p artifacts
 rm -f artifacts/*.wasm
 
@@ -26,6 +30,7 @@ for contract in "${CONTRACTS[@]}"; do
     cd "contracts/$contract"
     cargo clean --quiet
     
+    # Disable all post-MVP features
     export RUSTFLAGS="-C link-arg=-s -C target-feature=-bulk-memory,-sign-ext,-mutable-globals,-nontrapping-fptoint"
     
     echo "Compiling to WASM..."
@@ -33,15 +38,26 @@ for contract in "${CONTRACTS[@]}"; do
 
     WASM_PATH="target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm"
 
+    # Optimize with dual-pass (CRITICAL for bulk-memory lowering)
     if command -v wasm-opt &> /dev/null; then
-        echo "Optimizing with strict MVP..."
-        wasm-opt -Oz --signext-lowering --mvp-features "$WASM_PATH" -o "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
+        echo "Optimizing with dual-pass lowering..."
+        
+        # Pass 1: Parse with all features enabled, optimize size
+        wasm-opt --all-features -Oz "$WASM_PATH" -o "../../artifacts/temp_${CONTRACT_NAME_SNAKE}.wasm"
+        
+        # Pass 2: Lower bulk-memory and sign-ext to basic instructions
+        wasm-opt --signext-lowering "../../artifacts/temp_${CONTRACT_NAME_SNAKE}.wasm" -o "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
+        
+        # Cleanup temp file
+        rm -f "../../artifacts/temp_${CONTRACT_NAME_SNAKE}.wasm"
     else
         echo -e "${YELLOW}⚠ wasm-opt not found!${NC}"
         cp "$WASM_PATH" "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
     fi
     
+    # Final Validation
     if command -v cosmwasm-check &> /dev/null; then
+        echo "Validating artifact compatibility..."
         cosmwasm-check "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
     fi
 
