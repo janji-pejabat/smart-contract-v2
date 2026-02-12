@@ -65,7 +65,7 @@ echo ""
 
 # Step 2: Compile all to WASM
 echo -e "${CYAN}[2/4] Compiling workspace to WASM...${NC}"
-RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown
+RUSTFLAGS='-C link-arg=-s -C target-feature=-bulk-memory -C target-feature=-sign-ext' cargo build --release --target wasm32-unknown-unknown
 echo -e "${GREEN}✓ Compilation successful${NC}"
 echo ""
 
@@ -84,7 +84,7 @@ if [ -z "$SKIP_OPT" ]; then
         fi
 
         echo -e "  Optimizing ${BLUE}${contract}${NC}..."
-        wasm-opt -Oz --enable-sign-ext --enable-bulk-memory "$WASM_IN" -o "$WASM_OUT"
+        wasm-opt -Oz "$WASM_IN" -o "$WASM_OUT"
     done
     echo -e "${GREEN}✓ Optimization complete${NC}"
 else
