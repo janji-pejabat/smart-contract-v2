@@ -41,4 +41,7 @@ pub enum ContractError {
 
     #[error("Amount must be greater than zero")]
     ZeroAmount {},
+
+    #[error("Platform fee too high (max {0} bps)")]
+    FeeTooHigh(u16),
 }

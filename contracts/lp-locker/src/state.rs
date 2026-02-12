@@ -8,6 +8,7 @@ pub struct Config {
     pub reward_controller: Option<Addr>,
     pub emergency_unlock_delay: u64,
     pub platform_fee_bps: u16,
+    pub batch_limit: u32,
     pub paused: bool,
     pub next_locker_id: u64,
 }
@@ -28,10 +29,15 @@ pub struct Locker {
 #[cw_serde]
 pub struct WhitelistedLP {
     pub lp_token: Addr,
+    pub name: String,
+    pub symbol: String,
     pub min_lock_duration: u64,
     pub max_lock_duration: u64,
     pub enabled: bool,
     pub bonus_multiplier: Decimal,
+    pub total_locked_all_time: Uint128,
+    pub total_unlocked_all_time: Uint128,
+    pub user_count: u64,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");
@@ -39,3 +45,4 @@ pub const LOCKERS: Map<u64, Locker> = Map::new("lockers");
 pub const USER_LOCKERS: Map<(&Addr, u64), bool> = Map::new("user_lockers");
 pub const WHITELISTED_LPS: Map<&Addr, WhitelistedLP> = Map::new("whitelisted_lps");
 pub const TOTAL_LOCKED: Map<&Addr, Uint128> = Map::new("total_locked");
+pub const USER_LP_HISTORY: Map<(&Addr, &Addr), bool> = Map::new("user_lp_history");
