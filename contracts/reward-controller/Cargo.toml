@@ -7,13 +7,6 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[profile.release]
-opt-level = 'z'
-debug = false
-lto = true
-codegen-units = 1
-panic = 'abort'
-overflow-checks = true
 
 [features]
 default = []
