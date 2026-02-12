@@ -19,7 +19,7 @@ for arg in "$@"; do
 done
 
 echo -e "${GREEN}=========================================="
-echo "  LP PLATFORM - OPTIMIZED BUILD SUITE"
+echo "  LP PLATFORM - COMPATIBLE BUILD SUITE"
 echo "==========================================${NC}"
 echo ""
 
@@ -64,8 +64,10 @@ fi
 echo ""
 
 # Step 2: Compile all to WASM
+# We strictly disable bulk-memory and sign-ext for compatibility with all CosmWasm chains
 echo -e "${CYAN}[2/4] Compiling workspace to WASM...${NC}"
-RUSTFLAGS='-C link-arg=-s -C target-feature=-bulk-memory -C target-feature=-sign-ext' cargo build --release --target wasm32-unknown-unknown
+export RUSTFLAGS="-C target-feature=-bulk-memory -C target-feature=-sign-ext -C link-arg=-s"
+cargo build --release --target wasm32-unknown-unknown
 echo -e "${GREEN}✓ Compilation successful${NC}"
 echo ""
 
@@ -84,6 +86,7 @@ if [ -z "$SKIP_OPT" ]; then
         fi
 
         echo -e "  Optimizing ${BLUE}${contract}${NC}..."
+        # Note: We do NOT enable bulk-memory or sign-ext here to ensure strict compatibility
         wasm-opt -Oz "$WASM_IN" -o "$WASM_OUT"
     done
     echo -e "${GREEN}✓ Optimization complete${NC}"
@@ -106,7 +109,6 @@ echo ""
 # Step 4: Generate checksums
 echo -e "${CYAN}[4/4] Generating checksums...${NC}"
 cd artifacts
-# Use a more robust loop that doesn't fail if no matches
 shopt -s nullglob
 WASM_FILES=(*.wasm)
 if [ ${#WASM_FILES[@]} -eq 0 ]; then
