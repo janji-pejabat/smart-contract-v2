@@ -923,7 +923,8 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
                 .keys(deps.storage, None, None, cosmwasm_std::Order::Ascending)
                 .collect::<StdResult<Vec<_>>>()?;
 
-            let old_locker_map: cw_storage_plus::Map<u64, LockerV1> = cw_storage_plus::Map::new("lockers");
+            let old_locker_map: cw_storage_plus::Map<u64, LockerV1> =
+                cw_storage_plus::Map::new("lockers");
             for id in locker_ids {
                 let old_locker = old_locker_map.load(deps.storage, id)?;
                 let new_locker = Locker {
