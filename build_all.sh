@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build_all.sh - Build both LP Platform contracts
+# build_all.sh - Build and Validate LP Platform contracts
 
 set -e
 
@@ -16,7 +16,7 @@ if [ -t 0 ] && [ -n "$TERM" ]; then
 fi
 
 echo -e "${GREEN}=========================================="
-echo "  LP PLATFORM v2.0.0 - BUILD SUITE"
+echo "  LP PLATFORM v2.0.0 - BUILD & VALIDATE"
 echo "  Locker + Reward Controller"
 echo "==========================================${NC}"
 echo ""
@@ -42,17 +42,28 @@ echo ""
 # Check build tools
 echo -e "${CYAN}Checking build tools...${NC}"
 if ! command -v cargo &> /dev/null; then
-    echo -e "${RED}✗ Rust not installed!${NC}"
+    echo -e "${RED}✗ Rust/Cargo not installed!${NC}"
     echo "Install from: https://rustup.rs/"
     exit 1
 fi
 
+# wasm-opt check
 if ! command -v wasm-opt &> /dev/null; then
-    echo -e "${YELLOW}⚠ wasm-opt not found - will skip optimization${NC}"
-    echo "Install with: sudo apt-get install binaryen"
+    echo -e "${YELLOW}⚠ wasm-opt not found! Optimization will be skipped.${NC}"
+    echo -e "To install (Ubuntu): ${CYAN}sudo apt-get install binaryen${NC}"
+    echo -e "To install (macOS): ${CYAN}brew install binaryen${NC}"
     SKIP_OPT=1
 else
     echo -e "${GREEN}✓ wasm-opt found${NC}"
+fi
+
+# cosmwasm-check check
+if ! command -v cosmwasm-check &> /dev/null; then
+    echo -e "${YELLOW}⚠ cosmwasm-check not found! Artifact validation will be skipped.${NC}"
+    echo -e "To install: ${CYAN}cargo install cosmwasm-check${NC}"
+    SKIP_VALIDATE=1
+else
+    echo -e "${GREEN}✓ cosmwasm-check found${NC}"
 fi
 echo ""
 
@@ -72,31 +83,28 @@ for contract in "${CONTRACTS[@]}"; do
     cd "contracts/$contract"
     
     # Clean previous builds
+    echo -e "${CYAN}[1/5] Cleaning build environment...${NC}"
     cargo clean --quiet
 
-    # Step 1: Run tests
-    echo -e "${CYAN}[1/4] Running tests...${NC}"
+    # Step 2: Run tests
+    echo -e "${CYAN}[2/5] Running tests...${NC}"
     if cargo test --quiet; then
         echo -e "${GREEN}✓ Tests passed${NC}"
     else
         echo -e "${RED}✗ Some tests failed!${NC}"
-        # Only ask for user input if in an interactive terminal
         if [ -t 0 ]; then
             echo -e "${YELLOW}Continue anyway? (y/n)${NC}"
             read -r response
-            if [[ ! "$response" =~ ^[Yy]$ ]]; then
-                exit 1
-            fi
+            if [[ ! "$response" =~ ^[Yy]$ ]]; then exit 1; fi
         else
             exit 1
         fi
     fi
     echo ""
     
-    # Step 2: Compile to WASM
-    echo -e "${CYAN}[2/4] Compiling to WASM...${NC}"
-    # Target MVP CPU and disable extensions to ensure compatibility with Paxi Network
-    # We explicitly disable bulk-memory, sign-ext, and mutable-globals at the compiler level.
+    # Step 3: Compile to WASM
+    echo -e "${CYAN}[3/5] Compiling to WASM (strictly MVP)...${NC}"
+    # Target MVP CPU and disable modern extensions to ensure compatibility with older chains
     export RUSTFLAGS="-C target-cpu=mvp -C target-feature=-bulk-memory -C target-feature=-sign-ext -C target-feature=-mutable-globals -C link-arg=-s"
     cargo build --release --target wasm32-unknown-unknown --quiet
     if [ $? -eq 0 ]; then
@@ -107,44 +115,56 @@ for contract in "${CONTRACTS[@]}"; do
     fi
     echo ""
     
-    # Step 3: Optimize with wasm-opt
+    # Step 4: Optimize with wasm-opt
     if [ -z "$SKIP_OPT" ]; then
-        echo -e "${CYAN}[3/4] Optimizing with wasm-opt...${NC}"
-        # We use strictly MVP features to ensure compatibility with Paxi Network.
-        # The compiler is configured to output MVP, and wasm-opt will verify and optimize it.
+        echo -e "${CYAN}[4/5] Optimizing and Lowering Opcodes...${NC}"
+        # We use explicit lowering to resolve "bulk memory support is not enabled" errors.
+        # --all-features allows parsing the input, then we lower everything to MVP.
         wasm-opt -Oz \
-            --mvp-features \
+            --all-features \
+            --bulkmemory-lowering \
+            --signext-lowering \
             --strip-debug \
             "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" \
             -o "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm"
         
         if [ $? -eq 0 ]; then
-            echo -e "${GREEN}✓ Optimization successful${NC}"
-            FINAL_WASM="${CONTRACT_NAME_SNAKE}.wasm"
-            cp "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm" \
-               "../../artifacts/${FINAL_WASM}"
+            echo -e "${GREEN}✓ Optimization & Lowering successful${NC}"
+            FINAL_WASM_SOURCE="target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}_optimized.wasm"
         else
             echo -e "${RED}✗ Optimization failed!${NC}"
             exit 1
         fi
     else
-        echo -e "${YELLOW}[3/4] Skipping optimization${NC}"
-        FINAL_WASM="${CONTRACT_NAME_SNAKE}.wasm"
-        cp "target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm" \
-           "../../artifacts/${FINAL_WASM}"
+        echo -e "${YELLOW}[4/5] Skipping optimization (Artifact may fail chain validation)${NC}"
+        FINAL_WASM_SOURCE="target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm"
     fi
     echo ""
     
-    # Step 4: Generate checksum
-    echo -e "${CYAN}[4/4] Generating checksum...${NC}"
+    # Step 5: Validate and Copy Artifact
+    FINAL_WASM_NAME="${CONTRACT_NAME_SNAKE}.wasm"
+    cp "$FINAL_WASM_SOURCE" "../../artifacts/${FINAL_WASM_NAME}"
+
+    if [ -z "$SKIP_VALIDATE" ]; then
+        echo -e "${CYAN}[5/5] Validating with cosmwasm-check...${NC}"
+        if cosmwasm-check "../../artifacts/${FINAL_WASM_NAME}"; then
+            echo -e "${GREEN}✓ Artifact validated${NC}"
+        else
+            echo -e "${RED}✗ Validation failed! The WASM is not compatible with standard CosmWasm VM.${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${YELLOW}[5/5] Skipping validation${NC}"
+    fi
+    echo ""
+
+    # Generate checksum
     cd ../../artifacts
-    sha256sum "$FINAL_WASM" > "${FINAL_WASM}.sha256"
-    SIZE=$(du -h "$FINAL_WASM" | cut -f1)
-    CHECKSUM=$(cut -d' ' -f1 "${FINAL_WASM}.sha256")
+    sha256sum "$FINAL_WASM_NAME" > "${FINAL_WASM_NAME}.sha256"
+    SIZE=$(du -h "$FINAL_WASM_NAME" | cut -f1)
+    CHECKSUM=$(cut -d' ' -f1 "${FINAL_WASM_NAME}.sha256")
     
-    echo -e "${GREEN}✓ Artifact created${NC}"
-    echo -e "  File: ${CYAN}$FINAL_WASM${NC}"
-    echo -e "  Size: ${CYAN}${SIZE}${NC}"
+    echo -e "${GREEN}✅ Artifact created: ${CYAN}$FINAL_WASM_NAME${GREEN} (${SIZE})${NC}"
     echo -e "  SHA256: ${CYAN}${CHECKSUM:0:16}...${NC}"
     echo ""
     
@@ -153,40 +173,11 @@ done
 
 # Summary
 echo -e "${GREEN}=========================================="
-echo "  ✅ BUILD COMPLETE!"
+echo "  🏆 ALL BUILDS COMPLETE!"
 echo "==========================================${NC}"
 echo ""
-echo -e "${BLUE}Artifacts created:${NC}"
-ls -lh artifacts/*.wasm | awk '{print "  " $9 " (" $5 ")"}'
-echo ""
-echo -e "${BLUE}Checksums:${NC}"
-cat artifacts/*.sha256 | awk '{print "  " substr($1,1,16) "... - " $2}'
-echo ""
-echo -e "${YELLOW}Next Steps:${NC}"
-echo "  1. Deploy to testnet for testing (minimum 2 weeks)"
-echo "  2. Deploy lp-locker first, get contract address"
-echo "  3. Deploy reward-controller with lp-locker address"
-echo "  4. Configure both contracts (whitelist LP, create pools)"
-echo "  5. Test complete user flow"
-echo "  6. Deploy to mainnet"
-echo ""
-echo -e "${CYAN}Deployment Commands:${NC}"
-echo "  # Store code"
-echo "  paxid tx wasm store artifacts/lp_locker.wasm \\"
-echo "    --from admin --gas auto --gas-adjustment 1.3"
-echo ""
-echo "  # Instantiate LP Locker"
-echo "  paxid tx wasm instantiate <CODE_ID> \\"
-echo "    '{\"admin\":\"paxi1...\",\"emergency_unlock_delay\":259200}' \\"
-echo "    --from admin --label \"LP Locker v2\" --admin paxi1... --gas auto"
-echo ""
-echo "  # Store & instantiate Reward Controller"
-echo "  paxid tx wasm store artifacts/reward_controller.wasm \\"
-echo "    --from admin --gas auto --gas-adjustment 1.3"
-echo ""
-echo "  paxid tx wasm instantiate <CODE_ID> \\"
-echo "    '{\"admin\":\"paxi1...\",\"lp_locker_contract\":\"paxi1...locker\"}' \\"
-echo "    --from admin --label \"Reward Controller v2\" --admin paxi1... --gas auto"
+echo -e "${BLUE}Deployment Commands:${NC}"
+echo "  paxid tx wasm store artifacts/lp_locker.wasm --from admin --gas auto --gas-adjustment 1.3"
 echo ""
 echo -e "${GREEN}Happy deploying! 🚀${NC}"
 echo ""
