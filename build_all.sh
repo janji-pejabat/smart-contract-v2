@@ -43,43 +43,20 @@ for contract in "${CONTRACTS[@]}"; do
     if command -v wasm-opt &> /dev/null; then
         echo "Optimizing and forcing MVP features..."
 
-        # Get wasm-opt version/help to decide on flags
-        WASM_OPT_HELP=$(wasm-opt --help)
-
         # Start with aggressive size optimization and strip debug info
         WASM_OPT_FLAGS="-Oz --strip-debug --strip-producers"
 
-        # Enable features in the parser so we can read the compiler output
-        # We need to enable them even if we intend to lower them later
-        if echo "$WASM_OPT_HELP" | grep -q "all-features"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --all-features"
-        fi
+        # We need to enable modern features in the parser so it can read the compiler output,
+        # even though we will lower them to MVP opcodes immediately after.
+        # wasm-opt v116+ supports --all-features.
+        WASM_OPT_FLAGS="$WASM_OPT_FLAGS --all-features"
 
-        # Individual enable flags for parsing - be aggressive here
-        for feat in "bulk-memory" "sign-ext" "mutable-globals" "nontrapping-fptoint"; do
-            if echo "$WASM_OPT_HELP" | grep -q "enable-$feat"; then
-                WASM_OPT_FLAGS="$WASM_OPT_FLAGS --enable-$feat"
-            elif echo "$WASM_OPT_HELP" | grep -q "${feat//-/}"; then
-                 WASM_OPT_FLAGS="$WASM_OPT_FLAGS --enable-${feat//-/}"
-            fi
-        done
+        # FORCE lowering of modern opcodes back to MVP sequences.
+        # We use both hyphenated and non-hyphenated pass names for maximum compatibility.
+        # These passes convert memory.copy, memory.fill, and sign-extension opcodes into loops/basic math.
+        WASM_OPT_FLAGS="$WASM_OPT_FLAGS --bulk-memory-lowering --bulkmemory-lowering --sign-ext-lowering --signext-lowering"
 
-        # FORCE lowering of any modern opcodes back to MVP loops/sequences
-        # We try multiple variations of pass names to ensure compatibility with different wasm-opt versions
-        for pass in "bulk-memory-lowering" "bulkmemory-lowering" "sign-ext-lowering" "signext-lowering"; do
-            if echo "$WASM_OPT_HELP" | grep -q "$pass"; then
-                WASM_OPT_FLAGS="$WASM_OPT_FLAGS --$pass"
-            elif echo "$WASM_OPT_HELP" | grep -q "${pass//-/}"; then
-                # Try without internal hyphens if hyphenated version not found in help
-                WASM_OPT_FLAGS="$WASM_OPT_FLAGS --${pass//-/}"
-            fi
-        done
-
-        # Final safety: Enforce strictly MVP output features
-        if echo "$WASM_OPT_HELP" | grep -q "mvp-features"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --mvp-features"
-        fi
-
+        echo "Running wasm-opt with flags: $WASM_OPT_FLAGS"
         wasm-opt $WASM_OPT_FLAGS "$WASM_PATH" -o "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
     else
         echo -e "${YELLOW}⚠ wasm-opt not found! Copying raw WASM. This will likely fail validation on Paxi.${NC}"
