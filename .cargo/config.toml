@@ -1,6 +1,8 @@
 [target.wasm32-unknown-unknown]
 rustflags = [
     "-C", "target-cpu=mvp",
-    "-C", "target-feature=-bulk-memory,-sign-ext",
+    "-C", "target-feature=-bulk-memory",
+    "-C", "target-feature=-sign-ext",
+    "-C", "target-feature=-mutable-globals",
     "-C", "link-arg=-s",
 ]

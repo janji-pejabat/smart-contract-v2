@@ -11,6 +11,9 @@ pub struct InstantiateMsg {
 }
 
 #[cw_serde]
+pub enum MigrateMsg {}
+
+#[cw_serde]
 pub enum ExecuteMsg {
     /// Receive CW20 tokens (for reward deposits)
     Receive(Cw20ReceiveMsg),
