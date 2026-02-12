@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build_all.sh - Build both LP Platform contracts with strict MVP compatibility
+# build_all.sh - Build and Validate LP Platform contracts with strict MVP compatibility
 
 set -e
 
@@ -32,33 +32,31 @@ for contract in "${CONTRACTS[@]}"; do
     
     # Disable modern WASM features at compile time to ensure compatibility.
     # We target MVP CPU and explicitly remove bulk-memory, sign-ext, and mutable-globals.
+    # IMPORTANT: target-feature must be a single comma-separated list.
     export RUSTFLAGS="-C target-cpu=mvp -C target-feature=-bulk-memory,-sign-ext,-mutable-globals -C link-arg=-s"
-    cargo build --release --target wasm32-unknown-unknown --quiet
     
+    echo "Compiling to WASM..."
+    cargo build --release --target wasm32-unknown-unknown --quiet
+
     WASM_PATH="target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm"
 
     # Optimize and lower opcodes using wasm-opt if available
     if command -v wasm-opt &> /dev/null; then
-        echo "Optimizing and lowering $contract..."
+        echo "Optimizing and validating $contract..."
 
         # Dynamically detect supported flags to avoid "Unknown option" errors
         WASM_OPT_HELP=$(wasm-opt --help)
         WASM_OPT_FLAGS="-Oz --strip-debug"
 
-        # Lowering passes for compatibility
-        if echo "$WASM_OPT_HELP" | grep -q "bulk-memory-lowering"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --bulk-memory-lowering"
-        elif echo "$WASM_OPT_HELP" | grep -q "bulkmemory-lowering"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --bulkmemory-lowering"
+        # We want strictly MVP features.
+        if echo "$WASM_OPT_HELP" | grep -q "mvp-features"; then
+            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --mvp-features"
         fi
 
-        if echo "$WASM_OPT_HELP" | grep -q "sign-ext-lowering"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --sign-ext-lowering"
-        elif echo "$WASM_OPT_HELP" | grep -q "signext-lowering"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --signext-lowering"
-        fi
-
-        # Input features (enable so optimizer can parse then lower)
+        # If the compiler still leaked bulk-memory or sign-ext, try to lower them.
+        # Note: --mvp-features usually prevents these from being in the output,
+        # but we add lowering passes just in case they are present in the input
+        # and wasm-opt can parse them.
         if echo "$WASM_OPT_HELP" | grep -q "enable-bulk-memory"; then
             WASM_OPT_FLAGS="$WASM_OPT_FLAGS --enable-bulk-memory"
         fi
@@ -66,9 +64,11 @@ for contract in "${CONTRACTS[@]}"; do
             WASM_OPT_FLAGS="$WASM_OPT_FLAGS --enable-sign-ext"
         fi
 
-        # Output features (strictly MVP)
-        if echo "$WASM_OPT_HELP" | grep -q "mvp-features"; then
-            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --mvp-features"
+        if echo "$WASM_OPT_HELP" | grep -q "bulk-memory-lowering"; then
+            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --bulk-memory-lowering"
+        fi
+        if echo "$WASM_OPT_HELP" | grep -q "sign-ext-lowering"; then
+            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --sign-ext-lowering"
         fi
 
         wasm-opt $WASM_OPT_FLAGS "$WASM_PATH" -o "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
@@ -79,7 +79,7 @@ for contract in "${CONTRACTS[@]}"; do
     
     # Validate using cosmwasm-check if available
     if command -v cosmwasm-check &> /dev/null; then
-        echo "Validating $contract..."
+        echo "Validating $contract with cosmwasm-check..."
         cosmwasm-check "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
     fi
 
