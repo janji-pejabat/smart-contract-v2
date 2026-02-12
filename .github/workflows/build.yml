@@ -44,37 +44,22 @@ jobs:
         run: cargo test --verbose
 
   build:
-    name: Build WASM
+    name: Build WASM with CosmWasm Optimizer
     needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      
-      - name: Install wasm-opt (Latest)
+      - name: Build with CosmWasm Optimizer
         run: |
-          wget https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz
-          tar -xzf binaryen-version_116-x86_64-linux.tar.gz
-          sudo cp binaryen-version_116/bin/wasm-opt /usr/local/bin/
-          wasm-opt --version
+          docker run --rm \
+            -v "$(pwd)":/code \
+            --mount type=volume,source="$(basename "$(pwd)")_cache",target=/code/target \
+            --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
+            cosmwasm/optimizer:0.16.0
       
-      - name: Cache Cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Build Contracts
-        run: chmod +x build_all.sh && ./build_all.sh
+      - name: List Artifacts
+        run: ls -lh artifacts/
       
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -90,9 +75,12 @@ jobs:
           body: |
             ## LP Platform v2.0 Release
             
-            ### Contracts
+            ### Contracts (CosmWasm Optimized)
             - `lp_locker.wasm` - LP Locker Contract
             - `reward_controller.wasm` - Reward Controller Contract
+            
+            ### Built with cosmwasm/optimizer:0.16.0
+            Guaranteed MVP-compatible for Paxi Network
             
             ### Deployment
             See [README.md](README.md) for deployment instructions
