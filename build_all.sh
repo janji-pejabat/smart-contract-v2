@@ -46,15 +46,28 @@ for contract in "${CONTRACTS[@]}"; do
         # Start with aggressive size optimization and strip debug info
         WASM_OPT_FLAGS="-Oz --strip-debug --strip-producers"
 
+        # Get wasm-opt help to check for supported flags
+        WASM_OPT_HELP=$(wasm-opt --help 2>&1 || true)
+
         # We need to enable modern features in the parser so it can read the compiler output,
         # even though we will lower them to MVP opcodes immediately after.
-        # wasm-opt v116+ supports --all-features.
-        WASM_OPT_FLAGS="$WASM_OPT_FLAGS --all-features"
+        if echo "$WASM_OPT_HELP" | grep -q "all-features"; then
+            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --all-features"
+        fi
 
         # FORCE lowering of modern opcodes back to MVP sequences.
-        # We use both hyphenated and non-hyphenated pass names for maximum compatibility.
-        # These passes convert memory.copy, memory.fill, and sign-extension opcodes into loops/basic math.
-        WASM_OPT_FLAGS="$WASM_OPT_FLAGS --bulk-memory-lowering --bulkmemory-lowering --sign-ext-lowering --signext-lowering"
+        # We try different variations because different wasm-opt versions use different naming conventions.
+        # hyphenated vs non-hyphenated (e.g., bulk-memory-lowering vs bulkmemory-lowering)
+        for pass in "bulkmemory-lowering" "bulk-memory-lowering" "signext-lowering" "sign-ext-lowering"; do
+            if echo "$WASM_OPT_HELP" | grep -q "$pass"; then
+                WASM_OPT_FLAGS="$WASM_OPT_FLAGS --$pass"
+            fi
+        done
+
+        # Enforce strictly MVP output features if supported
+        if echo "$WASM_OPT_HELP" | grep -q "mvp-features"; then
+            WASM_OPT_FLAGS="$WASM_OPT_FLAGS --mvp-features"
+        fi
 
         echo "Running wasm-opt with flags: $WASM_OPT_FLAGS"
         wasm-opt $WASM_OPT_FLAGS "$WASM_PATH" -o "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
