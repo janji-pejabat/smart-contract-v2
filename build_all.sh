@@ -7,10 +7,10 @@ set -e
 # 1. Setup build directory
 mkdir -p artifacts
 
-# 2. Sequential Build (avoiding memory issues in CI)
-# Building from the root workspace
+# 2. Sequential Build
+# We use -C target-feature=-bulk-memory,-sign-ext to ensure compatibility with older WASM runtimes.
 echo "Building all contracts..."
-RUSTFLAGS="-C link-arg=-s" cargo build --release --target wasm32-unknown-unknown
+RUSTFLAGS="-C target-feature=-bulk-memory,-sign-ext -C link-arg=-s" cargo build --release --target wasm32-unknown-unknown
 
 # 3. Optimize and Move artifacts
 CONTRACTS=("lp_locker" "reward_controller" "prc20_vesting")
@@ -20,10 +20,11 @@ for CONTRACT in "${CONTRACTS[@]}"; do
     
     # Check if wasm-opt is available
     if command -v wasm-opt > /dev/null; then
-        # Note: --enable-bulk-memory/sign-ext might be needed for wasm-opt to read the file
-        # but the target chain might reject them. Adjust flags if necessary.
+        # We enable the features for wasm-opt so it can process the file even if they are present.
+        # This allows the optimization pass to complete.
         wasm-opt -Oz \
-            --signext-lowering \
+            --enable-bulk-memory \
+            --enable-sign-ext \
             "target/wasm32-unknown-unknown/release/$CONTRACT.wasm" \
             -o "artifacts/$CONTRACT.wasm"
     else
