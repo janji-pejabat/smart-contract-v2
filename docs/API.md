@@ -73,7 +73,8 @@
 
 ### Execute Messages
 
-#### RegisterStake
+#### RegisterStake (Optional)
+Note: Only needed for lockers created before the reward controller deployment.
 ```json
 {
   "register_stake": {

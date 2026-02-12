@@ -89,6 +89,8 @@ paxid tx wasm execute <LP_TOKEN_ADDR> \
 
 ### Register for Rewards
 
+> **Note**: Registration is automatic for new lockers. Use this only for lockers created before the reward controller was active.
+
 ```bash
 paxid tx wasm execute <REWARD_ADDR> \
   '{"register_stake":{"locker_id":1}}' \
