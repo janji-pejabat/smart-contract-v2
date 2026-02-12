@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build_all.sh - Final definitive fix for Paxi Network WASM compatibility
+# build_all.sh - Build LP Platform contracts for Paxi Network
 
 set -e
 
@@ -9,12 +9,17 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-echo -e "${GREEN}Building LP Platform Contracts (STRICT MVP COMPATIBILITY)...${NC}"
+echo -e "${GREEN}Building LP Platform Contracts for Paxi Network...${NC}"
 
 # Check build tools
 if ! command -v cargo &> /dev/null; then
     echo -e "${RED}✗ Rust/Cargo not installed!${NC}"
     exit 1
+fi
+
+if ! command -v wasm-opt &> /dev/null; then
+    echo -e "${YELLOW}⚠ wasm-opt not found - will skip optimization${NC}"
+    SKIP_OPT=1
 fi
 
 # Create artifacts directory
@@ -30,28 +35,28 @@ for contract in "${CONTRACTS[@]}"; do
     cd "contracts/$contract"
     cargo clean --quiet
     
-    # Disable all post-MVP features
-    export RUSTFLAGS="-C link-arg=-s -C target-feature=-bulk-memory,-sign-ext,-mutable-globals,-nontrapping-fptoint"
-    
     echo "Compiling to WASM..."
-    cargo build --release --target wasm32-unknown-unknown --quiet
+    RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --quiet
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}✗ Compilation failed!${NC}"
+        exit 1
+    fi
 
     WASM_PATH="target/wasm32-unknown-unknown/release/${CONTRACT_NAME_SNAKE}.wasm"
 
-    # Optimize with dual-pass (CRITICAL for bulk-memory lowering)
-    if command -v wasm-opt &> /dev/null; then
-        echo "Optimizing with dual-pass lowering..."
-        
-        # Pass 1: Parse with all features enabled, optimize size
-        wasm-opt --all-features -Oz "$WASM_PATH" -o "../../artifacts/temp_${CONTRACT_NAME_SNAKE}.wasm"
-        
-        # Pass 2: Lower bulk-memory and sign-ext to basic instructions
-        wasm-opt --signext-lowering "../../artifacts/temp_${CONTRACT_NAME_SNAKE}.wasm" -o "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
-        
-        # Cleanup temp file
-        rm -f "../../artifacts/temp_${CONTRACT_NAME_SNAKE}.wasm"
+    if [ -z "$SKIP_OPT" ]; then
+        echo "Optimizing with wasm-opt..."
+        wasm-opt -Oz --enable-sign-ext \
+            "$WASM_PATH" \
+            -o "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
+
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}✗ Optimization failed!${NC}"
+            exit 1
+        fi
     else
-        echo -e "${YELLOW}⚠ wasm-opt not found!${NC}"
+        echo -e "${YELLOW}Skipping optimization${NC}"
         cp "$WASM_PATH" "../../artifacts/${CONTRACT_NAME_SNAKE}.wasm"
     fi
     
@@ -67,4 +72,4 @@ for contract in "${CONTRACTS[@]}"; do
     cd ../..
 done
 
-echo -e "${GREEN}✅ SUCCESS! MVP-compatible WASM ready for Paxi Network.${NC}"
+echo -e "${GREEN}✅ SUCCESS! Artifacts ready for Paxi Network.${NC}"
