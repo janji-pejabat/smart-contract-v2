@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PaxiVesting | Professional PRC20 Vesting Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://mainnet-api.paxinet.io/resources/js/paxi-cosmjs.umd.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        paxi: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                        dark: {
+                            900: '#0b0e14',
+                            800: '#151921',
+                            700: '#1f2530',
+                            600: '#2d3545',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        .glass {
+            background: rgba(31, 37, 48, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .tab-active {
+            border-bottom: 2px solid #0ea5e9;
+            color: #0ea5e9;
+        }
+    </style>
+</head>
+<body class="bg-dark-900 text-gray-200 min-h-screen">
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 glass border-b border-gray-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-2">
+                    <div class="bg-paxi-500 p-2 rounded-lg">
+                        <i class="fas fa-shield-halved text-white text-xl"></i>
+                    </div>
+                    <span class="text-xl font-bold tracking-tight bg-gradient-to-r from-paxi-400 to-paxi-600 bg-clip-text text-transparent">PaxiVesting</span>
+                </div>
+
+                <div class="hidden md:flex items-center space-x-8">
+                    <button onclick="switchTab('my-vestings')" id="tab-my-vestings" class="tab-active py-5 px-1 font-medium transition-colors">My Vestings</button>
+                    <button onclick="switchTab('admin-panel')" id="tab-admin-panel" class="py-5 px-1 font-medium text-gray-400 hover:text-white transition-colors">Admin Panel</button>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <div id="wallet-info" class="hidden flex items-center gap-3 bg-dark-700 px-4 py-2 rounded-full border border-gray-700">
+                        <span id="user-address" class="text-sm font-mono text-paxi-400">...</span>
+                        <div class="h-4 w-px bg-gray-600"></div>
+                        <span id="user-balance" class="text-sm font-bold text-white">0 PAXI</span>
+                    </div>
+                    <button id="btn-connect" class="bg-paxi-600 hover:bg-paxi-500 text-white px-6 py-2 rounded-full font-semibold transition-all shadow-lg shadow-paxi-900/20 active:scale-95">
+                        Connect Wallet
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <!-- Hero Section -->
+        <div id="hero-section" class="mb-12">
+            <h1 class="text-4xl font-extrabold text-white mb-4">Secure PRC20 Token Vesting</h1>
+            <p class="text-gray-400 text-lg max-w-2xl">Trustless distribution of your project tokens. Linear schedules, custom milestones, and full transparency on Paxi Network.</p>
+        </div>
+
+        <!-- My Vestings Content -->
+        <div id="section-my-vestings" class="space-y-6">
+            <div class="flex items-center justify-between">
+                <h2 class="text-2xl font-bold text-white">Your Allocations</h2>
+                <button onclick="refreshData()" class="text-paxi-400 hover:text-paxi-300 transition-colors">
+                    <i class="fas fa-sync-alt mr-2"></i>Refresh
+                </button>
+            </div>
+
+            <div id="vesting-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Skeleton Loading -->
+                <div class="bg-dark-800 rounded-2xl p-6 border border-gray-800 animate-pulse">
+                    <div class="h-4 bg-dark-700 rounded w-1/4 mb-4"></div>
+                    <div class="h-8 bg-dark-700 rounded w-3/4 mb-6"></div>
+                    <div class="space-y-3">
+                        <div class="h-3 bg-dark-700 rounded w-full"></div>
+                        <div class="h-3 bg-dark-700 rounded w-full"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="no-vestings" class="hidden flex flex-col items-center justify-center py-20 bg-dark-800 rounded-3xl border border-dashed border-gray-700 text-center">
+                <i class="fas fa-box-open text-6xl text-gray-700 mb-4"></i>
+                <h3 class="text-xl font-semibold text-gray-400">No vesting schedules found</h3>
+                <p class="text-gray-500">Connect your wallet or check another address.</p>
+            </div>
+        </div>
+
+        <!-- Admin Panel Content -->
+        <div id="section-admin-panel" class="hidden space-y-10">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Stats Column -->
+                <div class="lg:col-span-1 space-y-6">
+                    <div class="bg-dark-800 rounded-3xl p-8 border border-gray-800">
+                        <h3 class="text-xl font-bold text-white mb-6">Contract Status</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-400">Status</span>
+                                <span id="contract-status" class="bg-green-900/30 text-green-400 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Active</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-400">Admin</span>
+                                <span id="contract-admin" class="text-sm font-mono text-gray-300">...</span>
+                            </div>
+                            <div class="pt-4 border-t border-gray-700">
+                                <button id="btn-toggle-pause" class="w-full bg-red-900/20 hover:bg-red-900/40 text-red-400 border border-red-900/50 py-3 rounded-xl font-semibold transition-all">
+                                    Emergency Pause
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-dark-800 rounded-3xl p-8 border border-gray-800">
+                        <h3 class="text-xl font-bold text-white mb-4">Global Stats</h3>
+                        <div class="space-y-6">
+                            <div>
+                                <p class="text-gray-400 text-sm mb-1">Total Vested</p>
+                                <p id="stat-total-vested" class="text-2xl font-mono font-bold text-white">0.00</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-400 text-sm mb-1">Total Claimed</p>
+                                <p id="stat-total-claimed" class="text-2xl font-mono font-bold text-paxi-400">0.00</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Create Vesting Column -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="bg-dark-800 rounded-3xl p-8 border border-gray-800">
+                        <div class="flex items-center justify-between mb-8">
+                            <h3 class="text-2xl font-bold text-white">Create New Vesting</h3>
+                            <div class="flex bg-dark-700 p-1 rounded-xl">
+                                <button onclick="setVestingType('linear')" id="btn-type-linear" class="px-4 py-2 rounded-lg bg-dark-600 text-white text-sm font-medium transition-all shadow-lg">Linear</button>
+                                <button onclick="setVestingType('custom')" id="btn-type-custom" class="px-4 py-2 rounded-lg text-gray-400 text-sm font-medium hover:text-white transition-all">Custom</button>
+                            </div>
+                        </div>
+
+                        <form id="create-vesting-form" class="space-y-6">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-gray-400">PRC20 Token Address</label>
+                                    <input type="text" id="token-address" placeholder="paxi..." class="w-full bg-dark-700 border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-paxi-500 transition-colors">
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-gray-400">Beneficiary Address</label>
+                                    <input type="text" id="beneficiary-address" placeholder="paxi..." class="w-full bg-dark-700 border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-paxi-500 transition-colors">
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-gray-400">Amount</label>
+                                    <input type="number" id="vesting-amount" placeholder="0.00" class="w-full bg-dark-700 border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-paxi-500 transition-colors font-mono">
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-gray-400">Category</label>
+                                    <input type="text" id="vesting-category" placeholder="Team / Seed / Advisor" class="w-full bg-dark-700 border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-paxi-500 transition-colors">
+                                </div>
+                            </div>
+
+                            <!-- Linear Config -->
+                            <div id="linear-config" class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-gray-700">
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-gray-400">Start Time</label>
+                                    <input type="datetime-local" id="start-time" class="w-full bg-dark-700 border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-paxi-500 transition-colors">
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-gray-400">End Time</label>
+                                    <input type="datetime-local" id="end-time" class="w-full bg-dark-700 border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-paxi-500 transition-colors">
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-sm font-medium text-gray-400">Interval (sec)</label>
+                                    <input type="number" id="interval" value="1" class="w-full bg-dark-700 border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-paxi-500 transition-colors">
+                                </div>
+                            </div>
+
+                            <!-- Custom Config (Simple Milestone Adder for Demo) -->
+                            <div id="custom-config" class="hidden space-y-4 pt-4 border-t border-gray-700">
+                                <p class="text-sm text-gray-400">Define milestones in JSON format for precision</p>
+                                <textarea id="milestones-json" rows="4" placeholder='[{"timestamp": 1735689600, "amount": "1000000"}]' class="w-full bg-dark-700 border border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-paxi-500 transition-colors font-mono text-sm"></textarea>
+                            </div>
+
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" id="revocable" class="w-5 h-5 rounded bg-dark-700 border-gray-700 text-paxi-600 focus:ring-paxi-500">
+                                <label for="revocable" class="text-sm font-medium text-gray-300">Is Revocable?</label>
+                            </div>
+
+                            <button type="submit" class="w-full bg-gradient-to-r from-paxi-600 to-paxi-700 hover:from-paxi-500 hover:to-paxi-600 text-white py-4 rounded-2xl font-bold text-lg transition-all shadow-xl shadow-paxi-900/40 active:scale-[0.98]">
+                                Create Vesting Position
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal for Transactions -->
+    <div id="tx-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div class="bg-dark-800 rounded-3xl p-8 max-w-md w-full border border-gray-700 shadow-2xl">
+            <div id="tx-loading" class="flex flex-col items-center text-center">
+                <div class="w-16 h-16 border-4 border-paxi-500 border-t-transparent rounded-full animate-spin mb-6"></div>
+                <h3 class="text-2xl font-bold text-white mb-2">Processing Transaction</h3>
+                <p class="text-gray-400">Please sign the transaction in your PaxiHub wallet.</p>
+            </div>
+            <div id="tx-success" class="hidden flex flex-col items-center text-center">
+                <div class="w-16 h-16 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-6">
+                    <i class="fas fa-check text-3xl"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-white mb-2">Transaction Successful</h3>
+                <p id="tx-hash" class="text-paxi-400 font-mono text-sm mb-6 break-all">...</p>
+                <button onclick="closeModal()" class="w-full bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-xl font-bold transition-all">Close</button>
+            </div>
+            <div id="tx-error" class="hidden flex flex-col items-center text-center">
+                <div class="w-16 h-16 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mb-6">
+                    <i class="fas fa-times text-3xl"></i>
+                </div>
+                <h3 class="text-2xl font-bold text-white mb-2">Transaction Failed</h3>
+                <p id="error-message" class="text-gray-400 mb-6 text-sm">Unknown error occurred.</p>
+                <button onclick="closeModal()" class="w-full bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-xl font-bold transition-all">Try Again</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/app.js"></script>
+</body>
+</html>

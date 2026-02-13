@@ -21,6 +21,7 @@ Platform ini terdiri dari **3 smart contracts**:
 - ✅ **Migration Support** - Upgradeable contracts
 - ✅ **Audit-Ready** - Reentrancy protection, overflow checks
 - ✅ **Batch Operations** - Support batch create vesting & batch claim
+- ✅ **Professional DApp** - Complete frontend for beneficiaries & admins
 
 ## 🚀 Quick Start
 
@@ -210,6 +211,7 @@ MIT License - see LICENSE file
 
 - Documentation: [docs/](docs/)
 - Vesting Guide: [docs/prc20-vesting.md](docs/prc20-vesting.md)
+- Frontend DApp: [frontend/](frontend/)
 - Issues: GitHub Issues
 - Discord: [Paxi Network](https://discord.gg/paxi)
 
