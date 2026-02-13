@@ -1,16 +1,18 @@
 [package]
-name = "reward-controller"
-version = "2.0.0"
+name = "prc20-vesting"
+version = "1.0.0"
 authors = ["Paxi Network <dev@paxi.network>"]
 edition = "2021"
+description = "Professional PRC20 Token Vesting Smart Contract"
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+
 [features]
 default = []
 library = []
-
 
 [dependencies]
 cosmwasm-std = "=1.5.0"

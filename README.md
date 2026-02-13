@@ -4,20 +4,24 @@ Production-ready DeFi platform for Paxi Network with dual-contract architecture.
 
 ## 🎯 Overview
 
-Platform ini terdiri dari **2 smart contracts**:
+Platform ini terdiri dari **3 smart contracts**:
 
 1. **LP Locker** - Lock LP tokens dengan time-lock mechanism
 2. **Reward Controller** - Distribute rewards ke LP lockers
+3. **PRC20 Vesting** - Professional token vesting untuk PRC20 (CW20) tokens
 
 ### Key Features
 
 - ✅ **Secure LP Locking** - LP tokens (CW20) di-lock on-chain
+- ✅ **Token Vesting** - Support Linear, Cliff, dan Milestone vesting
 - ✅ **Multi-Token Rewards** - Support CW20 + native PAXI rewards
 - ✅ **Configurable APR** - Emission per second + bonus multiplier
 - ✅ **Lock & Earn** - User dapat claim rewards tanpa unlock LP
 - ✅ **Emergency Safety** - 3-day delay emergency unlock
 - ✅ **Migration Support** - Upgradeable contracts
 - ✅ **Audit-Ready** - Reentrancy protection, overflow checks
+- ✅ **Batch Operations** - Support batch create vesting & batch claim
+- ✅ **Professional DApp** - Complete frontend for beneficiaries & admins
 
 ## 🚀 Quick Start
 
@@ -206,6 +210,8 @@ MIT License - see LICENSE file
 ## 📞 Support
 
 - Documentation: [docs/](docs/)
+- Vesting Guide: [docs/prc20-vesting.md](docs/prc20-vesting.md)
+- Frontend DApp: [frontend/](frontend/)
 - Issues: GitHub Issues
 - Discord: [Paxi Network](https://discord.gg/paxi)
 
