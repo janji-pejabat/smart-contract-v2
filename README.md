@@ -1,23 +1,23 @@
-# 🏦 LP Platform v2.0 - Professional LP Locker + Reward Engine
+# Paxi Network DeFi Protocol
 
-Production-ready DeFi platform for Paxi Network with dual-contract architecture.
+Enterprise-grade decentralized finance suite for the Paxi Network, featuring secure LP locking, modular reward engines, and isolated staking environments.
 
-## 🎯 Overview
+## 🎯 Protocol Overview
 
-Platform ini terdiri dari **2 smart contracts**:
+This suite consists of **three core smart contracts**:
 
-1. **LP Locker** - Lock LP tokens dengan time-lock mechanism
-2. **Reward Controller** - Distribute rewards ke LP lockers
+1.  **LP Locker**: Time-lock mechanism for CW20/PRC20 LP tokens with multiplier support.
+2.  **Reward Controller**: Multi-pool reward distribution engine with dynamic APR.
+3.  **PRC20 Staking**: Room-based staking protocol with NFT boosters and auto-compounding.
 
 ### Key Features
 
-- ✅ **Secure LP Locking** - LP tokens (CW20) di-lock on-chain
-- ✅ **Multi-Token Rewards** - Support CW20 + native PAXI rewards
-- ✅ **Configurable APR** - Emission per second + bonus multiplier
-- ✅ **Lock & Earn** - User dapat claim rewards tanpa unlock LP
-- ✅ **Emergency Safety** - 3-day delay emergency unlock
-- ✅ **Migration Support** - Upgradeable contracts
-- ✅ **Audit-Ready** - Reentrancy protection, overflow checks
+-   ✅ **Isolated Environments**: "Room" architecture ensures security and flexibility.
+-   ✅ **Multi-Token Support**: Earn multiple CW20 or native assets in a single pool.
+-   ✅ **NFT Integration**: Read-only Paxi Network NFT integration for APR boosters.
+-   ✅ **Advanced Mechanics**: AND/OR staking rules and gated auto-compounding.
+-   ✅ **Safety First**: Emergency unlock delays, checked arithmetic, and reentrancy protection.
+-   ✅ **Reward Solvency**: Balance-aware emissions protect the protocol from insolvency.
 
 ## 🚀 Quick Start
 
@@ -72,6 +72,12 @@ paxid tx wasm execute <REWARD_TOKEN> \
   '{"send":{"contract":"<REWARD_ADDR>","amount":"1000000000000","msg":"eyJkZXBvc2l0X3Jld2FyZHMiOnsicG9vbF9pZCI6MH19"}}' \
   --from admin --gas auto
 ```
+
+## 📚 Documentation
+
+For a complete standalone implementation guide, technical specifications, and API reference, please see:
+
+👉 **[Protocol Master Guide (docs/PROTOCOL_MASTER.md)](docs/PROTOCOL_MASTER.md)**
 
 ## 📖 User Flow
 
