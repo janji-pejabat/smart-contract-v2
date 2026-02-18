@@ -1,7 +1,5 @@
 #[cfg(test)]
-mod tests {
-    use super::*;
-
+mod contract_tests {
     #[test]
     fn test_instantiate() {
         // TODO: Add comprehensive tests

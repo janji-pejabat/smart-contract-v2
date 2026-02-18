@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod contract_tests {
     #[test]
     fn test_instantiate() {
         // TODO: Add comprehensive tests
