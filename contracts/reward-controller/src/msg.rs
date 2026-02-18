@@ -1,6 +1,6 @@
+use crate::state::AssetInfo;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Decimal, Uint128};
-use crate::state::AssetInfo;
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -64,16 +64,10 @@ pub enum QueryMsg {
     },
 
     #[returns(UserStakeResponse)]
-    UserStake {
-        user: String,
-        locker_id: u64,
-    },
+    UserStake { user: String, locker_id: u64 },
 
     #[returns(PendingRewardsResponse)]
-    PendingRewards {
-        user: String,
-        pool_id: u64,
-    },
+    PendingRewards { user: String, pool_id: u64 },
 }
 
 #[cw_serde]

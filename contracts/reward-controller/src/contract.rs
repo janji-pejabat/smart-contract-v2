@@ -1,18 +1,18 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, Decimal, Addr, CosmosMsg, WasmMsg, BankMsg, Coin,
+    entry_point, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut,
+    Env, MessageInfo, Response, StdResult, Uint128, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw20::Cw20ExecuteMsg;
 
 use crate::error::ContractError;
 use crate::msg::{
-    ConfigResponse, ExecuteMsg, InstantiateMsg, QueryMsg,
-    RewardPoolResponse, UserStakeResponse, PendingRewardsResponse,
+    ConfigResponse, ExecuteMsg, InstantiateMsg, PendingRewardsResponse, QueryMsg,
+    RewardPoolResponse, UserStakeResponse,
 };
 use crate::state::{
-    RewardConfig, RewardPool, UserStake, UserReward, AssetInfo,
-    CONFIG, POOLS, USER_STAKES, USER_REWARDS, TOTAL_STAKED,
+    AssetInfo, RewardConfig, RewardPool, UserReward, UserStake, CONFIG, POOLS, TOTAL_STAKED,
+    USER_REWARDS, USER_STAKES,
 };
 
 const CONTRACT_NAME: &str = "crates.io:reward-controller";
@@ -61,24 +61,36 @@ pub fn execute(
         ExecuteMsg::UnregisterStake { locker_id } => {
             execute_unregister_stake(deps, env, info, locker_id)
         }
-        ExecuteMsg::ClaimRewards { pool_ids } => {
-            execute_claim_rewards(deps, env, info, pool_ids)
-        }
+        ExecuteMsg::ClaimRewards { pool_ids } => execute_claim_rewards(deps, env, info, pool_ids),
         ExecuteMsg::CreateRewardPool {
             reward_token,
             emission_per_second,
             start_time,
             end_time,
-        } => execute_create_pool(deps, env, info, reward_token, emission_per_second, start_time, end_time),
+        } => execute_create_pool(
+            deps,
+            env,
+            info,
+            reward_token,
+            emission_per_second,
+            start_time,
+            end_time,
+        ),
         ExecuteMsg::UpdateRewardPool {
             pool_id,
             emission_per_second,
             end_time,
             enabled,
-        } => execute_update_pool(deps, env, info, pool_id, emission_per_second, end_time, enabled),
-        ExecuteMsg::DepositRewards { pool_id } => {
-            execute_deposit_rewards(deps, env, info, pool_id)
-        }
+        } => execute_update_pool(
+            deps,
+            env,
+            info,
+            pool_id,
+            emission_per_second,
+            end_time,
+            enabled,
+        ),
+        ExecuteMsg::DepositRewards { pool_id } => execute_deposit_rewards(deps, env, info, pool_id),
         ExecuteMsg::WithdrawRewards { pool_id, amount } => {
             execute_withdraw_rewards(deps, env, info, pool_id, amount)
         }
@@ -113,7 +125,7 @@ fn execute_register_stake(
         locker_id,
         lp_amount: Uint128::from(1000000u128), // TODO: Get from locker query
         lock_start: env.block.time.seconds(),
-        lock_duration: 86400 * 30, // TODO: Calculate from locker
+        lock_duration: 86400 * 30,        // TODO: Calculate from locker
         bonus_multiplier: Decimal::one(), // TODO: Get from whitelist
     };
 
@@ -493,7 +505,11 @@ fn query_user_stake(deps: Deps, user: String, locker_id: u64) -> StdResult<UserS
     })
 }
 
-fn query_pending_rewards(deps: Deps, user: String, pool_id: u64) -> StdResult<PendingRewardsResponse> {
+fn query_pending_rewards(
+    deps: Deps,
+    user: String,
+    pool_id: u64,
+) -> StdResult<PendingRewardsResponse> {
     let user_addr = deps.api.addr_validate(&user)?;
     let pending = calculate_pending_rewards(deps, &user_addr, pool_id)?;
 
