@@ -267,7 +267,7 @@ fn execute_extend_lock(
     // Validate against whitelist
     let whitelist = WHITELISTED_LPS.load(deps.storage, &locker.lp_token)?;
     let current_time = env.block.time.seconds();
-    let new_duration = new_unlock_time.checked_sub(current_time).unwrap_or(0);
+    let new_duration = new_unlock_time.saturating_sub(current_time);
 
     if new_duration > whitelist.max_lock_duration {
         return Err(ContractError::InvalidUnlockTime {
