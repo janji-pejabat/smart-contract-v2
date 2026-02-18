@@ -1,0 +1,25 @@
+{
+  "name": "stickman-rpg-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.16.0",
+    "framer-motion": "^10.16.4",
+    "lucide-react": "^0.284.0",
+    "axios": "^1.5.1",
+    "@cosmjs/stargate": "^0.31.3",
+    "@cosmjs/proto-signing": "^0.31.3",
+    "paxi-cosmjs": "latest",
+    "tailwindcss": "^3.3.3",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.31"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  }
+}
